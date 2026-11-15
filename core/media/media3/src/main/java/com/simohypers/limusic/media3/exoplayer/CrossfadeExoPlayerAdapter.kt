@@ -18,8 +18,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import com.simohypers.limusic.domain.data.player.AudioOutput
 import com.simohypers.limusic.domain.data.player.GenericCastState
@@ -48,6 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.nio.ByteBuffer
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -62,6 +65,51 @@ private const val PLAYBACK = "Playback"
 private const val FREEZE_MS = 500L
 
 private fun clock(ms: Long) = "${ms / 60_000}:${(ms / 1000 % 60).toString().padStart(2, '0')}"
+
+/**
+ * Keeps a player off the audio device until it first plays, the way desktop keeps its idle deck
+ * (desktop #409). A prepared player opens its AudioTrack on its first decoded buffer, played or
+ * not, so a precache sat on an open output for the whole track before it; on a tester's Xiaomi
+ * (Android 16) that lined up with the playing track losing its sound for about 1.5 s every minute.
+ *
+ * Refusing a buffer is the sink's ordinary "full, try again": the player still loads and decodes
+ * ahead, so a skip or a gapless change starts as fast as before, and the first [play] opens the
+ * track. The audio renderer only counts itself ready while the sink has data, so a held sink says
+ * it has some once it has turned a decoded buffer away: READY at the same moment as without it.
+ */
+@UnstableApi
+private class HoldUntilPlayAudioSink(
+    sink: AudioSink,
+) : ForwardingAudioSink(sink) {
+    // Written and read on the player's playback thread.
+    private var held = true
+    private var refused = false
+
+    override fun play() {
+        held = false
+        super.play()
+    }
+
+    override fun handleBuffer(
+        buffer: ByteBuffer,
+        presentationTimeUs: Long,
+        encodedAccessUnitCount: Int,
+    ): Boolean {
+        if (held) {
+            refused = true
+            return false
+        }
+        return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+    }
+
+    override fun hasPendingData(): Boolean = (held && refused) || super.hasPendingData()
+
+    // A flush throws away the decoded buffer that was turned away.
+    override fun flush() {
+        refused = false
+        super.flush()
+    }
+}
 
 /**
  * ExoPlayer implementation of [MediaPlayerInterface] with crossfade support.
@@ -542,29 +590,31 @@ internal class CrossfadeExoPlayerAdapter(
                     enableFloatOutput: Boolean,
                     enableAudioTrackPlaybackParams: Boolean,
                 ): AudioSink =
-                    DefaultAudioSink
-                        .Builder(context)
-                        .setEnableFloatOutput(enableFloatOutput)
-                        .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
-                        .setAudioProcessorChain(
-                            DefaultAudioSink.DefaultAudioProcessorChain(
-                                // Equalizer first, matching the desktop graph, where the ten
-                                // `equalizer` entries sit ahead of everything else in mpv's `af`
-                                // list — it decides which stage a boost can clip in, and the
-                                // preamp that makes room for the boost belongs with it. The
-                                // sleep fade stays last, because it is the master attenuation and
-                                // has to survive everything above.
-                                arrayOf(equalizer, sleepFade),
-                                SilenceSkippingAudioProcessor(
-                                    2_000_000,
-                                    (20_000 / 2_000_000).toFloat(),
-                                    2_000_000,
-                                    0,
-                                    256,
+                    HoldUntilPlayAudioSink(
+                        DefaultAudioSink
+                            .Builder(context)
+                            .setEnableFloatOutput(enableFloatOutput)
+                            .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
+                            .setAudioProcessorChain(
+                                DefaultAudioSink.DefaultAudioProcessorChain(
+                                    // Equalizer first, matching the desktop graph, where the ten
+                                    // `equalizer` entries sit ahead of everything else in mpv's `af`
+                                    // list — it decides which stage a boost can clip in, and the
+                                    // preamp that makes room for the boost belongs with it. The
+                                    // sleep fade stays last, because it is the master attenuation and
+                                    // has to survive everything above.
+                                    arrayOf(equalizer, sleepFade),
+                                    SilenceSkippingAudioProcessor(
+                                        2_000_000,
+                                        (20_000 / 2_000_000).toFloat(),
+                                        2_000_000,
+                                        0,
+                                        256,
+                                    ),
+                                    SonicAudioProcessor(),
                                 ),
-                                SonicAudioProcessor(),
-                            ),
-                        ).build()
+                            ).build(),
+                    )
             }
 
         val player =
@@ -592,6 +642,44 @@ internal class CrossfadeExoPlayerAdapter(
         // The output the user picked, if any: a player built for the next track, a crossfade or a
         // precache starts where the others are playing rather than back on the system's choice.
         outputRouter.preferredDevice?.let { player.setPreferredAudioDevice(it) }
+
+        // Next to the freeze watch: a run-dry line means the app stopped feeding the sound, a freeze
+        // without one means the system stopped taking it; open/close shows which player held a track.
+        player.addAnalyticsListener(
+            object : AnalyticsListener {
+                private fun who(): String {
+                    val role =
+                        when {
+                            player === currentPlayer -> "playing"
+                            player === fadingOutPlayer -> "fading out"
+                            else -> "waiting"
+                        }
+                    return "$role ${player.currentMediaItem?.mediaId ?: "?"}"
+                }
+
+                override fun onAudioTrackInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioTrackConfig: AudioSink.AudioTrackConfig,
+                ) = Logger.i(PLAYBACK, "audio output opened for ${who()} (${audioTrackConfig.sampleRate} Hz, ${audioTrackConfig.bufferSize} B)")
+
+                override fun onAudioTrackReleased(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioTrackConfig: AudioSink.AudioTrackConfig,
+                ) = Logger.i(PLAYBACK, "audio output closed for ${who()}")
+
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime,
+                    bufferSize: Int,
+                    bufferSizeMs: Long,
+                    elapsedSinceLastFeedMs: Long,
+                ) = Logger.i(PLAYBACK, "audio output ran dry for ${who()}, last fed $elapsedSinceLastFeedMs ms before")
+
+                override fun onAudioSinkError(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioSinkError: Exception,
+                ) = Logger.w(PLAYBACK, "audio output error for ${who()}: $audioSinkError")
+            },
+        )
 
         return player
     }
