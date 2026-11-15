@@ -111,6 +111,7 @@ fi
 
 if [ "$CI_OK" = 1 ] && [ "$OK" = 1 ]; then
   echo "==> $TAG is complete: four APKs attached$([ "$RC" = 0 ] && echo ", marked Latest")."
+  scripts/announce.sh "$TAG" || echo "    WARNING: the Discord post failed. Retry: scripts/announce.sh $TAG"
 else
   echo "==> $TAG IS PUBLISHED BUT INCOMPLETE. Check the run, then re-dispatch:" >&2
   echo "      gh run list --repo $REPO --limit 5" >&2
