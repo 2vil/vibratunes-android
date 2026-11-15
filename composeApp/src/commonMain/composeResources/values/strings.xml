@@ -99,7 +99,6 @@
     <string name="good_afternoon">Good afternoon</string>
     <string name="good_evening">Good evening</string>
     <string name="good_night">Good night</string>
-    <string name="quick_picks">Quick picks</string>
     <string name="playlist_name_cannot_be_empty">Playlist name cannot be empty</string>
     <string name="shared">Shared</string>
     <string name="rich_synced">Word by word</string>
