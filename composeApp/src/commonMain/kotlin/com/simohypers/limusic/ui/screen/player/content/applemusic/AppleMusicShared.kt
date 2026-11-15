@@ -953,7 +953,7 @@ internal fun ColumnScope.AppleMusicPlaybackControls(
         )
     }
     AppleMusicTimesRow(state = state, typography = typography, modifier = Modifier.padding(top = 8.dp))
-    Spacer(modifier = Modifier.height(22.dp))
+    Spacer(modifier = Modifier.height(if (state.isShort) 14.dp else 22.dp))
     AppleMusicTransportRow(
         controllerState = state.controllerState,
         onUIEvent = actions.onUIEvent,
@@ -988,9 +988,15 @@ internal fun AppleMusicBottomCluster(
     val localDensity = LocalDensity.current
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = topPadding)) {
         if (getPlatform() == Platform.Android) {
-            AppleMusicPlaybackControls(state = state, actions = actions, typography = typography)
-            Spacer(modifier = Modifier.height(18.dp))
-            deviceVolumeController?.let { controller ->
+            // On a short window (#13) Queue keeps only the dock: with the transport as well its list
+            // had no room at all. The cover's page, and its transport, is one tap away on the dock.
+            if (!(state.isShort && viewState == AppleMusicView.QUEUE)) {
+                AppleMusicPlaybackControls(state = state, actions = actions, typography = typography)
+                Spacer(modifier = Modifier.height(if (state.isShort) 12.dp else 18.dp))
+            }
+            // A short window (#13) leaves the volume to the phone's buttons, and the output's name
+            // under the dock to the output sheet.
+            deviceVolumeController?.takeUnless { state.isShort }?.let { controller ->
                 AppleMusicVolumeRow(controller = controller)
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -1006,31 +1012,33 @@ internal fun AppleMusicBottomCluster(
             onOpenOutput = onOpenOutput,
             onOpenListenTogether = actions.onOpenListenTogether,
         )
-        Spacer(modifier = Modifier.height(14.dp))
-        // Crossfaded, since it changes on its own — a headset connecting renames the line under the
-        // user's thumb. Tappable: it names the output, so it opens the output sheet.
-        Crossfade(
-            targetState = outputName.orEmpty(),
-            animationSpec = tween(300),
-            label = "appleMusicOutputCaption",
-            modifier = Modifier.fillMaxWidth(),
-        ) { name ->
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = name,
-                    style = typography.footer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth(0.65f)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onOpenOutput,
-                            ),
-                )
+        if (!state.isShort) {
+            Spacer(modifier = Modifier.height(14.dp))
+            // Crossfaded, since it changes on its own — a headset connecting renames the line under the
+            // user's thumb. Tappable: it names the output, so it opens the output sheet.
+            Crossfade(
+                targetState = outputName.orEmpty(),
+                animationSpec = tween(300),
+                label = "appleMusicOutputCaption",
+                modifier = Modifier.fillMaxWidth(),
+            ) { name ->
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = name,
+                        style = typography.footer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(0.65f)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onOpenOutput,
+                                ),
+                    )
+                }
             }
         }
         Spacer(
@@ -1038,7 +1046,7 @@ internal fun AppleMusicBottomCluster(
                 Modifier.height(
                     // Room under the caption, above the gesture bar — the owner asked for the whole
                     // block to sit higher than the bare inset put it.
-                    with(localDensity) { WindowInsets.systemBars.getBottom(localDensity).toDp() } + 36.dp,
+                    with(localDensity) { WindowInsets.systemBars.getBottom(localDensity).toDp() } + if (state.isShort) 8.dp else 36.dp,
                 ),
         )
     }

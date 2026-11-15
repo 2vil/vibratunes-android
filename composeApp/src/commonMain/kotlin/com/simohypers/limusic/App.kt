@@ -16,16 +16,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,8 +46,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -64,7 +61,6 @@ import com.simohypers.limusic.domain.manager.DataStoreManager.Values.TRUE
 import com.simohypers.limusic.logger.Logger
 import com.simohypers.limusic.expect.Orientation
 import com.simohypers.limusic.expect.currentOrientation
-import com.simohypers.limusic.extension.copy
 import com.simohypers.limusic.ui.component.AppNavigationRail
 import com.simohypers.limusic.ui.component.BusyPill
 import com.simohypers.limusic.ui.component.UpdateBanner
@@ -84,14 +80,12 @@ import com.simohypers.limusic.ui.navigation.graph.AppNavigationGraph
 import com.simohypers.limusic.ui.component.LimusicMiniPlayer
 import com.simohypers.limusic.ui.component.LimusicNavigationBar
 import com.simohypers.limusic.ui.component.navigateToTab
-import com.simohypers.limusic.ui.screen.MiniPlayer
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreen
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreenContent
 import com.simohypers.limusic.ui.theme.AppTheme
 import com.simohypers.limusic.ui.theme.desktopPanelDark
 import com.simohypers.limusic.ui.theme.desktopWindowDark
 import com.simohypers.limusic.ui.theme.desktopWindowLight
-import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.updater.Updater
 import com.simohypers.limusic.utils.isAppLinkAvailable
 import com.simohypers.limusic.utils.libraryTabOf
@@ -101,14 +95,10 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.getString
-import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import limusic.composeapp.generated.resources.Res
-import limusic.composeapp.generated.resources.good_night
 import limusic.composeapp.generated.resources.notification
-import limusic.composeapp.generated.resources.sleep_timer_off
 import limusic.composeapp.generated.resources.this_link_is_not_supported
-import limusic.composeapp.generated.resources.yes
 import kotlin.time.ExperimentalTime
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class, ExperimentalFoundationApi::class)
@@ -466,55 +456,22 @@ fun App(
                                     },
                                 )
                             }
+                            // The phone's mini player, floating over the content. Hidden while the Now
+                            // Playing panel beside it is open: the panel has the same controls.
                             this@Row.AnimatedVisibility(
                                 modifier =
                                     Modifier
                                         .padding(innerPadding)
                                         .align(Alignment.BottomCenter),
-                                visible = isShowMiniPlayer && isTablet && !isInFullscreen,
+                                visible =
+                                    isShowMiniPlayer && isTablet && !isInFullscreen &&
+                                        !(isTabletLandscape && isShowNowPlaylistScreen),
                                 enter = fadeIn() + slideInHorizontally(),
                                 exit = fadeOut(),
                             ) {
-                                MiniPlayer(
-                                    if (getPlatform() == Platform.Android) {
-                                        Modifier
-                                            .height(60.dp)
-                                            .fillMaxWidth(0.8f)
-                                            .padding(
-                                                horizontal = 12.dp,
-                                            ).padding(
-                                                bottom = 4.dp,
-                                            )
-                                    } else {
-                                        // Floating capsule, Apple Music style: a fixed size so it never
-                                        // stretches to the window width, and no haze at all — the capsule
-                                        // paints its own liquid glass. Layering haze underneath blurs the
-                                        // same pixels twice and reads as a dark smear, not glass.
-                                        // padding BEFORE height: the other way round the bottom margin
-                                        // eats into the 72dp and the capsule ends up 52dp tall.
-                                        // 60dp is the floor for this layout: the content row is centred
-                                        // on the capsule's axis and the 16dp progress box hangs off the
-                                        // bottom, so the height has to cover the taller of the artwork
-                                        // (32dp) and the two text lines (~33dp), plus that 16dp, plus a
-                                        // gap. Going lower means shrinking the artwork again.
-                                        Modifier
-                                            .wrapContentWidth()
-                                            .padding(bottom = 20.dp)
-                                            .height(60.dp)
-                                    },
-                                    navController = navController,
-                                    onClick = {
-                                        isShowNowPlaylistScreen = true
-                                    },
-                                    onClose = {
-                                        viewModel.stopPlayer()
-                                        viewModel.isServiceRunning = false
-                                    },
-                                    // The page lives in the Now Playing panel, so the panel opens with it.
-                                    onOpenFullscreenLyrics = {
-                                        viewModel.requestFullscreenLyrics()
-                                        isShowNowPlaylistScreen = true
-                                    },
+                                LimusicMiniPlayer(
+                                    onOpen = { isShowNowPlaylistScreen = true },
+                                    modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 6.dp),
                                 )
                             }
                         }
@@ -527,18 +484,19 @@ fun App(
                                 Row(
                                     Modifier
                                         .fillMaxHeight()
+                                        // A camera cutout or nav bar on this side comes on top of
+                                        // the width below, not out of it.
+                                        .padding(end = innerPadding.calculateEndPadding(LocalLayoutDirection.current))
+                                        // Never narrower than a phone held upright, which every
+                                        // player style is laid out for: 35 % of a phone on its
+                                        // side is ~260dp and cut the rows of buttons off (#13).
+                                        .widthIn(min = PANEL_MIN_WIDTH + 8.dp)
                                         .fillMaxWidth(0.35f),
                                 ) {
                                     Spacer(Modifier.width(8.dp))
                                     Box(
                                         Modifier
-                                            .padding(
-                                                innerPadding.copy(
-                                                    start = 0.dp,
-                                                    top = 0.dp,
-                                                    bottom = 0.dp,
-                                                ),
-                                            ).then(
+                                            .then(
                                                 // Matches the inset of the content panel so the two
                                                 // read as a pair of floating cards, not one panel
                                                 // with a seam down the middle.
@@ -654,3 +612,6 @@ private fun rememberArtworkColor(
 }
 
 private const val ARTWORK_SEED_PX = 112
+
+// The tester's phone held upright (#13); its Classic player was checked at this width.
+private val PANEL_MIN_WIDTH = 384.dp
