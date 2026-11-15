@@ -406,6 +406,11 @@ interface DataStoreManager {
 
     suspend fun setLyricsRomanized(on: Boolean)
 
+    /** Settings > Appearance > Player: the one-line lyric in the player shows its romanization. Off by default. */
+    val coverLyricRomanized: Flow<Boolean>
+
+    suspend fun setCoverLyricRomanized(on: Boolean)
+
     /** Settings > Appearance > Player: a tapped song, Play or Shuffle opens the full player. Off by default. */
     val openPlayerOnPlay: Flow<Boolean>
 

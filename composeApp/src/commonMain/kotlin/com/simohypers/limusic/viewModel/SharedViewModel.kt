@@ -665,6 +665,12 @@ class SharedViewModel(
         viewModelScope.launch { dataStoreManager.setLyricsRomanized(on) }
     }
 
+    fun getCoverLyricRomanized() = dataStoreManager.coverLyricRomanized
+
+    fun setCoverLyricRomanized(on: Boolean) {
+        viewModelScope.launch { dataStoreManager.setCoverLyricRomanized(on) }
+    }
+
     fun getOpenPlayerOnPlay() = dataStoreManager.openPlayerOnPlay
 
     fun setOpenPlayerOnPlay(on: Boolean) {

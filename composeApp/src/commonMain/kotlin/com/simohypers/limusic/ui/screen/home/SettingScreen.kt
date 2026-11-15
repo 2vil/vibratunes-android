@@ -225,6 +225,8 @@ import limusic.composeapp.generated.resources.clear_player_cache
 import limusic.composeapp.generated.resources.clear_thumbnail_cache
 import limusic.composeapp.generated.resources.content
 import limusic.composeapp.generated.resources.content_country
+import limusic.composeapp.generated.resources.cover_lyric_romanized
+import limusic.composeapp.generated.resources.cover_lyric_romanized_info
 import limusic.composeapp.generated.resources.crossfade
 import limusic.composeapp.generated.resources.crossfade_description
 import limusic.composeapp.generated.resources.crossfade_duration
@@ -492,6 +494,7 @@ fun SettingScreen(
     val preferredAudioLanguage by viewModel.preferredAudioLanguage.collectAsStateWithLifecycle()
     val amAnimatedArtwork by viewModel.amAnimatedArtwork.collectAsStateWithLifecycle()
     val openPlayerOnPlay by sharedViewModel.getOpenPlayerOnPlay().collectAsStateWithLifecycle(false)
+    val coverLyricRomanized by sharedViewModel.getCoverLyricRomanized().collectAsStateWithLifecycle(false)
     val flatProgressBar by sharedViewModel.flatProgressBar.collectAsStateWithLifecycle()
     val playerCache by viewModel.cacheSize.collectAsStateWithLifecycle()
     val downloadedCache by viewModel.downloadedCacheSize.collectAsStateWithLifecycle()
@@ -946,6 +949,11 @@ fun SettingScreen(
                                 title = stringResource(Res.string.flat_progress_bar),
                                 subtitle = stringResource(Res.string.flat_progress_bar_info),
                                 switch = (flatProgressBar to { sharedViewModel.setFlatProgressBar(it) }),
+                            )
+                            SettingItem(
+                                title = stringResource(Res.string.cover_lyric_romanized),
+                                subtitle = stringResource(Res.string.cover_lyric_romanized_info),
+                                switch = (coverLyricRomanized to { sharedViewModel.setCoverLyricRomanized(it) }),
                             )
                             SettingItem(
                                 title = stringResource(Res.string.open_player_on_play),
