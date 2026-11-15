@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -131,12 +132,13 @@ fun HomeDiscoverSection(
                             .background(
                                 smoothScrimBrush(
                                     from = MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                                    to = MaterialTheme.colorScheme.scrim.copy(alpha = 0.78f),
-                                    startFraction = 0.45f,
+                                    to = MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f),
+                                    startFraction = 0.3f,
                                 ),
                             ),
                     )
-                    // The scrim is dark in either theme, so the text takes the app's force-dark styles.
+                    // The scrim is dark in either theme, so the text takes the app's force-dark styles,
+                    // in white: their grey body colour fades into a light cover.
                     ForceDarkContent {
                         Column(
                             Modifier
@@ -146,6 +148,7 @@ fun HomeDiscoverSection(
                             Text(
                                 text = song.title,
                                 style = if (wide) typo().titleLarge else typo().headlineMedium,
+                                color = Color.White,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -159,6 +162,7 @@ fun HomeDiscoverSection(
                                         song.album?.name?.takeIf { it.isNotBlank() },
                                     ).joinToString(" • "),
                                 style = typo().bodyMedium,
+                                color = Color.White.copy(alpha = 0.8f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
