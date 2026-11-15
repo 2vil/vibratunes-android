@@ -673,6 +673,19 @@ internal class DataStoreManagerImpl(
         }
     }
 
+    override val coverLyricRomanized =
+        settingsDataStore.data.map { preferences ->
+            preferences[COVER_LYRIC_ROMANIZED] == TRUE
+        }
+
+    override suspend fun setCoverLyricRomanized(on: Boolean) {
+        withContext(Dispatchers.IO) {
+            settingsDataStore.edit { settings ->
+                settings[COVER_LYRIC_ROMANIZED] = if (on) TRUE else FALSE
+            }
+        }
+    }
+
     override val openPlayerOnPlay =
         settingsDataStore.data.map { preferences ->
             preferences[OPEN_PLAYER_ON_PLAY] == TRUE
@@ -1328,6 +1341,7 @@ internal class DataStoreManagerImpl(
         val LYRICS_TEXT_SIZE = floatPreferencesKey("lyrics_size")
         val LYRICS_ROMANIZED = stringPreferencesKey("lyrics_romanized")
         val OPEN_PLAYER_ON_PLAY = stringPreferencesKey("open_player_on_play")
+        val COVER_LYRIC_ROMANIZED = stringPreferencesKey("cover_lyric_romanized")
         val USING_PROXY = stringPreferencesKey("using_proxy")
         val PROXY_TYPE = stringPreferencesKey("proxy_type")
         val PROXY_HOST = stringPreferencesKey("proxy_host")
