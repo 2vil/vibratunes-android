@@ -1,5 +1,6 @@
 package com.simohypers.limusic.viewModel
 
+import com.simohypers.limusic.domain.data.model.home.HomeItem
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -45,6 +46,7 @@ private val ByTitle: Map<String, List<String>> =
         "quick_picks" to
             listOf(
                 "Quick picks", // en
+                "Song mixes", // en, the same 4-row shelf renamed on some accounts (2026-11-15)
                 "Schnellauswahl", // de
                 "Selecciones rápidas", // es
                 "Sélection rapide", // fr
@@ -256,6 +258,8 @@ fun homeShelfKind(
     title: String,
     moreBrowseId: String?,
 ): String? = moreBrowseId?.let(ByMore::get) ?: TitleToKind[title.trim().lowercase()]
+
+fun HomeItem.isQuickPicks(): Boolean = homeShelfKind(title, moreEndpoint?.browseId) == "quick_picks"
 
 /** Home's own section, keyed so a YouTube shelf title can never collide with it. */
 const val SHORTCUTS_SECTION = "@shortcuts"

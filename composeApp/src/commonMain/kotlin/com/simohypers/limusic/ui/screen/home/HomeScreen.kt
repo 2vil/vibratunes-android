@@ -156,6 +156,7 @@ import com.simohypers.limusic.viewModel.ListState
 import com.simohypers.limusic.viewModel.SHORTCUTS_SECTION
 import com.simohypers.limusic.viewModel.SharedViewModel
 import com.simohypers.limusic.viewModel.homeShelfKind
+import com.simohypers.limusic.viewModel.isQuickPicks
 import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
@@ -166,6 +167,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import limusic.composeapp.generated.resources.Res
+import limusic.composeapp.generated.resources.home_kind_quick_picks
 import limusic.composeapp.generated.resources.all
 import limusic.composeapp.generated.resources.all_hidden
 import limusic.composeapp.generated.resources.chart
@@ -181,7 +183,6 @@ import limusic.composeapp.generated.resources.good_night
 import limusic.composeapp.generated.resources.let_s_pick_a_playlist_for_you
 import limusic.composeapp.generated.resources.party
 import limusic.composeapp.generated.resources.play_all
-import limusic.composeapp.generated.resources.quick_picks
 import limusic.composeapp.generated.resources.relax
 import limusic.composeapp.generated.resources.romance
 import limusic.composeapp.generated.resources.sad
@@ -222,9 +223,8 @@ fun HomeScreen(
     val isScrollingUp by scrollState.isScrollingUp()
     val accountInfo by viewModel.accountInfo.collectAsStateWithLifecycle()
     val homeItems by viewModel.homeItemList.collectAsStateWithLifecycle()
-    val quickPicksTitle = stringResource(Res.string.quick_picks)
     // Quick picks leads Home wherever YouTube put it (stable sort: the rest keep their order).
-    val homeData = remember(homeItems, quickPicksTitle) { homeItems.sortedByDescending { it.title == quickPicksTitle } }
+    val homeData = remember(homeItems) { homeItems.sortedByDescending { it.isQuickPicks() } }
     val params by viewModel.params.collectAsStateWithLifecycle()
     val layout by viewModel.homeLayout.collectAsStateWithLifecycle()
     // Home shows the shelves it knows by kind, in the order Edit Home set, ours ahead of YouTube's
@@ -453,11 +453,13 @@ fun HomeScreen(
                                     // daily discover") take the 4-row list, swapped from upstream.
                                     if (item == null) {
                                         ShortcutsSection(viewModel, navController)
-                                    } else if (item.title == quickPicksTitle) {
+                                    } else if ((block as HomeBlock.Shelf).kind == "quick_picks") {
                                         HomeDiscoverSection(
-                                            // The last "artist" on a Quick picks row is the album.
+                                            // The last "artist" on a Quick picks row is the album. Our own
+                                            // name, whatever YouTube calls the shelf ("Song mixes" on some accounts).
                                             data =
                                                 item.copy(
+                                                    title = stringResource(Res.string.home_kind_quick_picks),
                                                     contents =
                                                         item.contents.mapNotNull { ct ->
                                                             ct?.copy(artists = ct.artists?.let { art -> if (art.size > 1) art.dropLast(1) else art })

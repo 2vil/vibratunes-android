@@ -35,7 +35,9 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -138,6 +140,10 @@ private val SWIPE_UP = 40.dp
 
 // How far the cover, title, seek bar and pills sit above where the leftover height would put them.
 private val RAISE = 16.dp
+
+// The page's side margin, and the least room above and below the cover (its shadow draws there).
+private val GUTTER = 24.dp
+private val COVER_GAP = 12.dp
 
 /**
  * The Classic full player, the default: a large cover with the current lyric line under it, title
@@ -308,53 +314,76 @@ private fun PlayerView(
     onSwipeUp: () -> Unit,
 ) {
     val isRepeatOne = state.controllerState.repeatState is RepeatState.One
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+    Column(Modifier.fillMaxSize()) {
         TopRow(state, actions)
-        Spacer(Modifier.weight(1f))
-        HorizontalPager(
-            state = state.artworkPagerState,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    // Only an upward drag is taken: a downward one stays the sheet's, to close the
-                    // player, and a sideways one the pager's, to change track.
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            var dy = 0f
-                            val drag =
-                                awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
-                                    if (over < 0) {
-                                        change.consume()
-                                        dy = over
-                                    }
-                                } ?: return@awaitEachGesture
-                            verticalDrag(drag.id) {
-                                dy += it.positionChange().y
-                                it.consume()
-                            }
-                            if (dy < -SWIPE_UP.toPx()) onSwipeUp()
-                        }
-                    },
-            pageSpacing = 24.dp,
-            userScrollEnabled = !isRepeatOne && state.artworkQueue.isNotEmpty(),
-            key = { index -> "artwork_${state.artworkQueue.getOrNull(index)?.videoId.orEmpty()}_$index" },
-        ) { page ->
-            if (page == state.currentOrderIndex) {
-                CurrentArtwork(state, actions)
-            } else {
-                val url = state.artworkQueue.getOrNull(page)?.thumbnails?.maxByOrNull { it.width * it.height }?.url
-                ArtworkImage(url = url, modifier = Modifier.fillMaxSize())
-            }
-        }
         // Cover, lyric line and title stay one group at fixed gaps; the leftover height goes
-        // above the cover instead of opening a hole under the line.
-        Spacer(Modifier.height(12.dp))
-        CoverLyricLine(state, typo().labelSmall, MaterialTheme.colorScheme.onBackground)
-        Spacer(Modifier.height(14.dp))
-        TitleRow(state, actions)
-        Spacer(Modifier.height(16.dp))
+        // above the cover instead of opening a hole under the line. Where there is too little
+        // (a short screen, a large font) the cover gets smaller, not the gaps or the title.
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Bottom) {
+            BoxWithConstraints(Modifier.weight(1f, fill = false)) {
+                val side = minOf(maxWidth - GUTTER * 2, maxHeight - COVER_GAP * 2).coerceAtLeast(0.dp)
+                val gutter = (maxWidth - side) / 2
+                CoverPager(state, actions, side, gutter, isRepeatOne, onSwipeUp)
+            }
+            CoverLyricLine(state, typo().labelSmall, MaterialTheme.colorScheme.onBackground, Modifier.padding(horizontal = GUTTER))
+            Spacer(Modifier.height(14.dp))
+            TitleRow(state, actions)
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * The cover and its neighbours. The pager spans the screen with the gutters as padding: it clips
+ * its pages at its own edges, and an edge at the cover's would cut the cover's shadow square.
+ */
+@Composable
+private fun CoverPager(
+    state: NowPlayingContentState,
+    actions: NowPlayingContentActions,
+    side: Dp,
+    gutter: Dp,
+    isRepeatOne: Boolean,
+    onSwipeUp: () -> Unit,
+) {
+    HorizontalPager(
+        state = state.artworkPagerState,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(side + COVER_GAP * 2)
+                // Only an upward drag is taken: a downward one stays the sheet's, to close the
+                // player, and a sideways one the pager's, to change track.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var dy = 0f
+                        val drag =
+                            awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                                if (over < 0) {
+                                    change.consume()
+                                    dy = over
+                                }
+                            } ?: return@awaitEachGesture
+                        verticalDrag(drag.id) {
+                            dy += it.positionChange().y
+                            it.consume()
+                        }
+                        if (dy < -SWIPE_UP.toPx()) onSwipeUp()
+                    }
+                },
+        contentPadding = PaddingValues(horizontal = gutter, vertical = COVER_GAP),
+        // At least the gutter, so a neighbour never peeks in at rest.
+        pageSpacing = gutter,
+        userScrollEnabled = !isRepeatOne && state.artworkQueue.isNotEmpty(),
+        key = { index -> "artwork_${state.artworkQueue.getOrNull(index)?.videoId.orEmpty()}_$index" },
+    ) { page ->
+        if (page == state.currentOrderIndex) {
+            CurrentArtwork(state, actions)
+        } else {
+            val url = state.artworkQueue.getOrNull(page)?.thumbnails?.maxByOrNull { it.width * it.height }?.url
+            ArtworkImage(url = url, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -487,7 +516,7 @@ private fun TopRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(start = GUTTER, end = GUTTER, top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = actions.onDismiss) {
@@ -640,7 +669,7 @@ private fun TitleRow(
     actions: NowPlayingContentActions,
 ) {
     val liked = state.controllerState.isLiked
-    Column {
+    Column(Modifier.padding(horizontal = GUTTER)) {
         // Like sits on the title's line, not between title and artist.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

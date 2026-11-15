@@ -35,7 +35,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import limusic.composeapp.generated.resources.Res
-import limusic.composeapp.generated.resources.quick_picks
 import limusic.composeapp.generated.resources.song
 import limusic.composeapp.generated.resources.view_count
 
@@ -167,10 +166,9 @@ class HomeViewModel(
                 // Quick picks leads Home, but YouTube can send it on a later page. Fetch up to it
                 // before showing Home, or it lands above the list once the user scrolls there.
                 // ponytail: two extra pages at most, the same requests scrolling down would make.
-                val quickPicks = getString(Res.string.quick_picks)
                 repeat(2) {
                     val next = continuation.value
-                    if (next.isNullOrEmpty() || _homeItemList.value.any { it.title == quickPicks }) return@repeat
+                    if (next.isNullOrEmpty() || _homeItemList.value.any { it.isQuickPicks() }) return@repeat
                     homeRepository
                         .getHomeDataContinue(next, getString(Res.string.view_count), getString(Res.string.song))
                         .collect { home ->

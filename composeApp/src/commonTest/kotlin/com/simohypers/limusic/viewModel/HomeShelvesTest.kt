@@ -10,6 +10,7 @@ class HomeShelvesTest {
         assertEquals("quick_picks", homeShelfKind("Quick picks", null))
         assertEquals("quick_picks", homeShelfKind("Schnellauswahl", null))
         assertEquals("quick_picks", homeShelfKind("  quick PICKS ", null))
+        assertEquals("quick_picks", homeShelfKind("Song mixes", null))
         assertNull(homeShelfKind("Indila", null))
     }
 
