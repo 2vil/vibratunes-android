@@ -130,6 +130,11 @@ class NowPlayingContentState(
     val videoAspectRatio: Float = 16f / 9,
     /** The playing track has another version (song or video) and videos are on: show Song | Video. */
     val canSwitchVersion: Boolean = false,
+    /**
+     * The window is too short for a big cover above the controls (a phone on its side, #13): each
+     * style puts a small cover beside the title instead, and tightens its controls.
+     */
+    val isShort: Boolean = false,
 )
 
 /**

@@ -182,9 +182,11 @@ fun NowPlayingContentAppleMusic(
     // Only a Spotify canvas takes the whole page now; Apple Music's animated artwork plays in the
     // artwork's own frame (see AppleMusicMainView), so it neither blacks the page out nor hides the
     // controls.
-    val fullscreenCanvas = state.screenData.canvasData?.let { !it.isAnimatedArtwork() } == true
+    // A short window (#13) has no room for the picture, so it draws neither a canvas nor a video.
+    val fullscreenCanvas = state.screenData.canvasData?.let { !it.isAnimatedArtwork() } == true && !state.isShort
     val showCanvasBackdrop =
         viewState == AppleMusicView.MAIN &&
+            !state.isShort &&
             (fullscreenCanvas || (state.screenData.canvasData == null && state.screenData.isVideo && state.shouldShowVideo))
 
     val deviceVolumeController = rememberDeviceVolumeController()
@@ -380,10 +382,11 @@ private fun AppleMusicMainView(
     val localDensity = LocalDensity.current
     val isRepeatOne = state.controllerState.repeatState is RepeatState.One
 
-    val canvasData = state.screenData.canvasData
+    // A short window (#13): no artwork, canvas or video, only a small cover beside the title.
+    val canvasData = state.screenData.canvasData.takeUnless { state.isShort }
     val animatedArtwork = canvasData?.takeIf { it.isAnimatedArtwork() }
     val fullscreenCanvas = canvasData != null && animatedArtwork == null
-    val isVideoBackdrop = canvasData == null && state.screenData.isVideo && state.shouldShowVideo
+    val isVideoBackdrop = canvasData == null && state.screenData.isVideo && state.shouldShowVideo && !state.isShort
 
     // Same fade/half-blended-frame fix M3E uses: fast fade-in, relaxed fade-out. Only a fullscreen
     // canvas ever hides the controls — every other artwork sits above them, not behind them.
@@ -425,7 +428,7 @@ private fun AppleMusicMainView(
 
         // The page itself. A video keeps the frosted cover behind it and a fullscreen canvas the black
         // page, as before; everything else stands on the mesh, hung from where the artwork ends.
-        val meshPage = !fullscreenCanvas && !isVideoBackdrop
+        val meshPage = !fullscreenCanvas && !isVideoBackdrop && !state.isShort
         val mesh =
             if (meshPage) {
                 rememberAppleMusicMesh(
@@ -445,7 +448,7 @@ private fun AppleMusicMainView(
         val topBand =
             if (meshPage && getPlatform() == Platform.Android) statusBarHeight + TOP_BAND_STRIP else 0.dp
 
-        HorizontalPager(
+        if (!state.isShort) HorizontalPager(
             state = state.artworkPagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1,
@@ -581,12 +584,16 @@ private fun AppleMusicMainView(
                         },
             ) {
                 AppleMusicMainTitleRow(state = state, actions = actions, typography = typography)
-                Spacer(modifier = Modifier.height(20.dp))
-                AppleMusicLyricStrip(
-                    state = state,
-                    typography = typography,
-                    onClick = { onSelectView(AppleMusicView.LYRICS) },
-                )
+                if (state.isShort) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    AppleMusicLyricStrip(
+                        state = state,
+                        typography = typography,
+                        onClick = { onSelectView(AppleMusicView.LYRICS) },
+                    )
+                }
                 AppleMusicBottomCluster(
                     state = state,
                     actions = actions,
@@ -852,6 +859,10 @@ internal fun AppleMusicMainTitleRow(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (state.isShort) {
+            CoverThumb(state, actions, size = 55.dp, shape = rounded(4.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = state.screenData.nowPlayingTitle,

@@ -208,6 +208,9 @@ internal fun NowPlayingExpressiveTheme(
     }
 }
 
+// Between the header and the title row on a short window, where the artwork card is left out.
+private val SHORT_GAP = 8.dp
+
 // The artwork is scored at this size: the seed depends on which colours cover the sleeve and how
 // strongly, which a full-resolution read would only make slower to find.
 private const val SEED_SAMPLE_PX = 112
@@ -306,7 +309,8 @@ private fun NowPlayingM3ExpressiveLayout(
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 // === 4. Artwork pager — same state/sync as Classic, card presentation ===
-                HorizontalPager(
+                // A short window (#13) has no room for the card: the cover joins the title row.
+                if (!state.isShort) HorizontalPager(
                     state = state.artworkPagerState,
                     modifier =
                         Modifier
@@ -432,55 +436,59 @@ private fun NowPlayingM3ExpressiveLayout(
                         Modifier
                             .fillMaxWidth(),
                     ) {
-                        Spacer(
-                            modifier =
-                                Modifier
-                                    .animateContentSize()
-                                    .height(
-                                        middleLayoutPaddingDp.dp,
-                                    ).fillMaxWidth(),
-                        )
-
-                        // The artwork card is rendered by the pager above; reserve the same
-                        // vertical space so the info layout keeps its Y position. Spacer has
-                        // no pointer input so pager swipes fall through. Its ratio MUST match
-                        // the card's slot (the video's shape capped at square while a video
-                        // plays, else square) or the fold math drifts from what the pager
-                        // actually draws — hence the one shared expressiveCardSlotRatio().
-                        Spacer(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp)
-                                    .onGloballyPositioned { coords ->
-                                        middleLayoutHeightDp =
-                                            with(localDensity) {
-                                                coords.size.height
-                                                    .toDp()
-                                                    .value
-                                                    .toInt()
-                                            }
-                                    }.aspectRatio(state.expressiveCardSlotRatio()),
-                        )
-
-                        // === 5. Inline current-lyric line, centered in the lower gap ===
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier =
-                                Modifier
-                                    .animateContentSize()
-                                    .height(
-                                        middleLayoutPaddingDp.dp,
-                                    ).fillMaxWidth(),
-                        ) {
-                            // Wraps to two lines instead of scrolling sideways; word-synced lyrics sweep.
-                            CoverLyricLine(
-                                state = state,
-                                style = typo().labelSmall,
-                                color = colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 20.dp),
-                                hidden = state.screenData.fullscreenCanvas() != null,
+                        if (state.isShort) {
+                            Spacer(Modifier.height(SHORT_GAP))
+                        } else {
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .animateContentSize()
+                                        .height(
+                                            middleLayoutPaddingDp.dp,
+                                        ).fillMaxWidth(),
                             )
+
+                            // The artwork card is rendered by the pager above; reserve the same
+                            // vertical space so the info layout keeps its Y position. Spacer has
+                            // no pointer input so pager swipes fall through. Its ratio MUST match
+                            // the card's slot (the video's shape capped at square while a video
+                            // plays, else square) or the fold math drifts from what the pager
+                            // actually draws — hence the one shared expressiveCardSlotRatio().
+                            Spacer(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp)
+                                        .onGloballyPositioned { coords ->
+                                            middleLayoutHeightDp =
+                                                with(localDensity) {
+                                                    coords.size.height
+                                                        .toDp()
+                                                        .value
+                                                        .toInt()
+                                                }
+                                        }.aspectRatio(state.expressiveCardSlotRatio()),
+                            )
+
+                            // === 5. Inline current-lyric line, centered in the lower gap ===
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier =
+                                    Modifier
+                                        .animateContentSize()
+                                        .height(
+                                            middleLayoutPaddingDp.dp,
+                                        ).fillMaxWidth(),
+                            ) {
+                                // Wraps to two lines instead of scrolling sideways; word-synced lyrics sweep.
+                                CoverLyricLine(
+                                    state = state,
+                                    style = typo().labelSmall,
+                                    color = colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    hidden = state.screenData.fullscreenCanvas() != null,
+                                )
+                            }
                         }
 
                         // === 6. Info block ===
@@ -634,9 +642,13 @@ private fun NowPlayingM3ExpressiveLayout(
                     // padding free down there, and the artist card's photo used to peek into it.
                     Spacer(
                         Modifier.height(
-                            (screenInfo.hDP - topAppBarHeightDp - 2 * middleLayoutPaddingDp - middleLayoutHeightDp - infoLayoutHeightDp)
-                                .coerceAtLeast(0)
-                                .dp,
+                            if (state.isShort) {
+                                (screenInfo.hDP.dp - topAppBarHeightDp.dp - SHORT_GAP - infoLayoutHeightDp.dp).coerceAtLeast(0.dp)
+                            } else {
+                                (screenInfo.hDP - topAppBarHeightDp - 2 * middleLayoutPaddingDp - middleLayoutHeightDp - infoLayoutHeightDp)
+                                    .coerceAtLeast(0)
+                                    .dp
+                            },
                         ),
                     )
                     ExpressiveBelowTheFold(state = state, actions = actions)
@@ -681,7 +693,11 @@ internal fun ExpressiveTrackInfoRow(
     ) {
         // While a canvas hides the big artwork, a small thumbnail joins the row — Classic
         // verbatim (its shared NowPlayingTrackInfoRow does exactly this).
-        AnimatedVisibility(state.screenData.fullscreenCanvas() != null) {
+        if (state.isShort) {
+            CoverThumb(state, actions, shape = rounded(12.dp))
+            Spacer(Modifier.width(12.dp))
+        }
+        AnimatedVisibility(state.screenData.fullscreenCanvas() != null && !state.isShort) {
             AsyncImage(
                 model =
                     ImageRequest

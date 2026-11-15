@@ -89,6 +89,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.size.Size
 import com.simohypers.limusic.common.Config.MAIN_PLAYER
 import com.simohypers.limusic.domain.data.player.AudioOutputKind
 import com.simohypers.limusic.domain.mediaservice.handler.MediaPlayerHandler
@@ -290,17 +291,17 @@ private fun ClassicLayout(
                     exit = shrinkVertically(tween(300)) + fadeOut(tween(200)),
                 ) {
                     Column {
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(if (state.isShort) 8.dp else 16.dp))
                         ClassicTransportRow(state, actions)
                         // Takes height from the gap above the cover, lifting everything but the bottom row.
-                        Spacer(Modifier.height(RAISE))
+                        if (!state.isShort) Spacer(Modifier.height(RAISE))
                     }
                 }
                 if (lyricsPageClose == null) {
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(if (state.isShort) 12.dp else 28.dp))
                     BottomRow(state, actions, view, onQueue = { toggle(ClassicView.QUEUE) }, onLyrics = { toggle(ClassicView.LYRICS) })
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(if (state.isShort) 8.dp else 12.dp))
             }
         }
     }
@@ -320,15 +321,19 @@ private fun PlayerView(
         // above the cover instead of opening a hole under the line. Where there is too little
         // (a short screen, a large font) the cover gets smaller, not the gaps or the title.
         Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Bottom) {
-            BoxWithConstraints(Modifier.weight(1f, fill = false)) {
-                val side = minOf(maxWidth - GUTTER * 2, maxHeight - COVER_GAP * 2).coerceAtLeast(0.dp)
-                val gutter = (maxWidth - side) / 2
-                CoverPager(state, actions, side, gutter, isRepeatOne, onSwipeUp)
+            // A short window has no room for the cover above the controls: a small one goes beside
+            // the title, and the lyric line goes (the Lyrics square is one tap away).
+            if (!state.isShort) {
+                BoxWithConstraints(Modifier.weight(1f, fill = false)) {
+                    val side = minOf(maxWidth - GUTTER * 2, maxHeight - COVER_GAP * 2).coerceAtLeast(0.dp)
+                    val gutter = (maxWidth - side) / 2
+                    CoverPager(state, actions, side, gutter, isRepeatOne, onSwipeUp)
+                }
+                CoverLyricLine(state, typo().labelSmall, MaterialTheme.colorScheme.onBackground, Modifier.padding(horizontal = GUTTER))
+                Spacer(Modifier.height(14.dp))
             }
-            CoverLyricLine(state, typo().labelSmall, MaterialTheme.colorScheme.onBackground, Modifier.padding(horizontal = GUTTER))
-            Spacer(Modifier.height(14.dp))
             TitleRow(state, actions)
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(if (state.isShort) 8.dp else 16.dp))
         }
     }
 }
@@ -669,35 +674,84 @@ private fun TitleRow(
     actions: NowPlayingContentActions,
 ) {
     val liked = state.controllerState.isLiked
-    Column(Modifier.padding(horizontal = GUTTER)) {
-        // Like sits on the title's line, not between title and artist.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = state.screenData.nowPlayingTitle,
-                style = typo().titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                modifier = Modifier.weight(1f).basicMarquee().clickable(onClick = actions.onNavigateToAlbum),
-            )
-            IconButton(onClick = { actions.onUIEvent(UIEvent.ToggleLike) }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    if (liked) LimusicIcons.Favorite else LimusicIcons.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
+    Row(Modifier.padding(horizontal = GUTTER), verticalAlignment = Alignment.CenterVertically) {
+        if (state.isShort) {
+            CoverThumb(state, actions)
+            Spacer(Modifier.width(12.dp))
         }
-        Text(
-            text = state.screenData.artistName,
-            style = typo().bodyLarge,
-            maxLines = 1,
-            modifier =
-                Modifier
-                    .basicMarquee()
-                    .clickable(onClick = actions.onNavigateToArtist),
-        )
+        Column(Modifier.weight(1f)) {
+            // Like sits on the title's line, not between title and artist.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = state.screenData.nowPlayingTitle,
+                    style = typo().titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f).basicMarquee().clickable(onClick = actions.onNavigateToAlbum),
+                )
+                IconButton(onClick = { actions.onUIEvent(UIEvent.ToggleLike) }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        if (liked) LimusicIcons.Favorite else LimusicIcons.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+            }
+            Text(
+                text = state.screenData.artistName,
+                style = typo().bodyLarge,
+                maxLines = 1,
+                modifier =
+                    Modifier
+                        .basicMarquee()
+                        .clickable(onClick = actions.onNavigateToArtist),
+            )
+        }
     }
+}
+
+/**
+ * The cover beside the title on a short window, in every style. It feeds the palette, as the big
+ * one it stands in for does.
+ */
+@Composable
+internal fun CoverThumb(
+    state: NowPlayingContentState,
+    actions: NowPlayingContentActions,
+    size: Dp = 56.dp,
+    shape: Shape = SmallShape,
+) {
+    var url by remember(state.screenData.thumbnailURL) { mutableStateOf(state.screenData.thumbnailURL) }
+    AsyncImage(
+        model =
+            ImageRequest
+                .Builder(LocalPlatformContext.current)
+                .data(url)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                // Full size, not the thumbnail's: the lyrics and song share cards draw this bitmap.
+                .size(Size.ORIGINAL)
+                .crossfade(400)
+                .build(),
+        contentDescription = null,
+        onSuccess = { actions.onArtworkBitmap(it.result.image.toImageBitmap()) },
+        onError = {
+            val fallback = url?.replace("maxresdefault", "hqdefault")
+            if (fallback != null && fallback != url) url = fallback
+        },
+        contentScale = ContentScale.Crop,
+        placeholder = rememberHolderPainter(),
+        error = rememberHolderPainter(),
+        modifier =
+            Modifier
+                .size(size)
+                .clip(shape)
+                .doubleTapToLike(
+                    state.controllerState.isLiked,
+                    onLike = { actions.onUIEvent(UIEvent.ToggleLike) },
+                    onLongPress = actions.onShowMoreSheet,
+                ),
+    )
 }
 
 /** Previous, play / pause, next: three pills in the cover's colour, play the widest. */
@@ -712,16 +766,19 @@ internal fun ClassicTransportRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FilledButton(LimusicIcons.SkipPrevious, Modifier.width(80.dp).height(64.dp), CircleShape, iconSize = 32.dp, enabled = control.isPreviousAvailable) {
+        // A short window gets lower pills, the same width.
+        val side = Modifier.width(80.dp).height(if (state.isShort) 48.dp else 64.dp)
+        val sideIcon = if (state.isShort) 28.dp else 32.dp
+        FilledButton(LimusicIcons.SkipPrevious, side, CircleShape, iconSize = sideIcon, enabled = control.isPreviousAvailable) {
             actions.onUIEvent(UIEvent.Previous)
         }
         FilledButton(
             if (control.isPlaying) LimusicIcons.Pause else LimusicIcons.PlayArrow,
-            Modifier.width(120.dp).height(80.dp),
+            Modifier.width(120.dp).height(if (state.isShort) 56.dp else 80.dp),
             CircleShape,
-            iconSize = 42.dp,
+            iconSize = if (state.isShort) 34.dp else 42.dp,
         ) { actions.onUIEvent(UIEvent.PlayPause) }
-        FilledButton(LimusicIcons.SkipNext, Modifier.width(80.dp).height(64.dp), CircleShape, iconSize = 32.dp, enabled = control.isNextAvailable) {
+        FilledButton(LimusicIcons.SkipNext, side, CircleShape, iconSize = sideIcon, enabled = control.isNextAvailable) {
             actions.onUIEvent(UIEvent.Next)
         }
     }

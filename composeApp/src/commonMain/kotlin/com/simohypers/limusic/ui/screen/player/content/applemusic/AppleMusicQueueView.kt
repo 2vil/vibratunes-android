@@ -158,7 +158,7 @@ internal fun AppleMusicQueueView(
             actions = actions,
             activePillContainer = activePillContainer,
             activePillContent = activePillContent,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+            modifier = Modifier.padding(top = 4.dp, bottom = if (state.isShort) 8.dp else 20.dp),
         )
         AppleMusicContinuePlayingHeader(
             state = state,

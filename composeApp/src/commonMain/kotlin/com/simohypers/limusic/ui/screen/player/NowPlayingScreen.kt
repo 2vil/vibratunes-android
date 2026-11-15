@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -52,6 +53,7 @@ import com.simohypers.limusic.extension.GradientAngle
 import com.simohypers.limusic.extension.GradientOffset
 import com.simohypers.limusic.extension.KeepScreenOn
 import com.simohypers.limusic.extension.getColorFromPalette
+import com.simohypers.limusic.extension.getScreenSizeInfo
 import com.simohypers.limusic.extension.rememberIsInPipMode
 import com.simohypers.limusic.ui.component.AddToPlaylistModalBottomSheet
 import com.simohypers.limusic.ui.component.BusyPill
@@ -93,6 +95,9 @@ import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.abs
 
 private const val TAG = "NowPlayingScreen"
+
+// Below this the players swap the big cover for a small one (#13): a phone on its side is 340-430.
+private const val SHORT_WINDOW_DP = 600
 
 @OptIn(ExperimentalFoundationApi::class)
 @ExperimentalMaterial3Api
@@ -598,6 +603,9 @@ fun NowPlayingScreenContent(
         KeepScreenOn()
     }
     val twin = artworkQueue.getOrNull(currentOrderIndex)?.takeIf { it.videoId == nowPlayingVideoId }?.counterpart
+    // ponytail: one height for all three styles, scaled by the font size because their controls
+    // grow with it and the cover takes the cut. Raise it if a style still overflows.
+    val isShort = getScreenSizeInfo().hDP < SHORT_WINDOW_DP * LocalDensity.current.fontScale
     val state =
         NowPlayingContentState(
             screenData = screenDataState,
@@ -616,9 +624,10 @@ fun NowPlayingScreenContent(
             sliderTrackColor = sliderTrackColor,
             sliderValue = sliderValue,
             currentLyricLineIndex = currentLyricLineIndex,
-            showControlLayout = showHideControlLayout,
+            // A short window has no room for a canvas, so nothing hides the controls for one.
+            showControlLayout = showHideControlLayout || isShort,
             controlLayoutAlpha = controlLayoutAlpha,
-            showHideMiddleLayout = showHideMiddleLayout,
+            showHideMiddleLayout = showHideMiddleLayout || isShort,
             shouldShowToolbar = shouldShowToolbar,
             isInPipMode = isInPipMode,
             mainScrollState = mainScrollState,
@@ -630,6 +639,7 @@ fun NowPlayingScreenContent(
             // Like desktop, only while videos are on: with them off a video plays as its sound. A
             // video with no other version gets it too, to show or hide its picture.
             canSwitchVersion = videosOn && (screenDataState.isVideo || twin != null),
+            isShort = isShort,
         )
     val actions =
         NowPlayingContentActions(
