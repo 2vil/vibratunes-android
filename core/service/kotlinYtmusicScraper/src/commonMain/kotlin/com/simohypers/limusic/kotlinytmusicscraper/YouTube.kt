@@ -1547,11 +1547,7 @@ class YouTube {
         if (probeUnanswered && refusals.isEmpty() && !streamRefused) {
             throw lastError ?: java.io.IOException("No answer from googlevideo for $videoId")
         }
-        // A bot check is about the IP and outranks everything. Otherwise the last refusal, unless a
-        // client did answer and only its stream failed: then "not available" would be untrue.
-        val refusal =
-            refusals.firstOrNull { it.reason?.contains("not a bot", ignoreCase = true) == true }
-                ?: refusals.lastOrNull()?.takeUnless { streamRefused }
+        val refusal = verdict(main?.playabilityStatus, refusals, streamRefused)
         throw PlayerRefusedException(refusal?.status ?: "UNPLAYABLE", refusal?.reason ?: "No stream that plays to the end")
     }
 
@@ -2360,6 +2356,25 @@ class YouTube {
 
     }
 }
+
+/**
+ * What to report when no client gave a stream. [main] is WEB_REMIX's status, [refusals] every
+ * client's refusal in order, [streamRefused] whether a client answered OK and only its stream failed.
+ *
+ * WEB_REMIX's own refusal is the verdict on the song ("Video unavailable", a region block): the
+ * anonymous fallbacks often add a bot check then, which says nothing about the songs WEB_REMIX does
+ * serve, and reporting it paused every download behind one dead song (issue #16). Otherwise a bot
+ * check is about the IP and outranks the rest; then the last refusal, unless a client did answer and
+ * only its stream failed: "not available" would be untrue.
+ */
+internal fun verdict(
+    main: PlayerResponse.PlayabilityStatus?,
+    refusals: List<PlayerResponse.PlayabilityStatus>,
+    streamRefused: Boolean,
+): PlayerResponse.PlayabilityStatus? =
+    main?.takeUnless { it.status == "OK" }
+        ?: refusals.firstOrNull { it.reason?.contains("not a bot", ignoreCase = true) == true }
+        ?: refusals.lastOrNull()?.takeUnless { streamRefused }
 
 /** The player answered, but not with OK: [status] is e.g. `UNPLAYABLE`, [reason] YouTube's sentence. */
 class PlayerRefusedException(
