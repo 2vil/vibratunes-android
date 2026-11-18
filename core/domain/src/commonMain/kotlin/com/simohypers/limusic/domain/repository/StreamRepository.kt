@@ -23,23 +23,9 @@ interface StreamRepository {
         muxed: Boolean = false, // m3u8 or mp4 (both contain audio and video)
     ): Flow<String?>
 
+    /** The watch-history ping for a play; emits the HTTP status, 0 on failure. */
     fun initPlayback(
         playback: String,
-        atr: String,
-        watchTime: String,
-        cpn: String,
-        playlistId: String?,
-    ): Flow<Pair<Int, Float>>
-
-    fun updateWatchTimeFull(
-        watchTime: String,
-        cpn: String,
-        playlistId: String?,
-    ): Flow<Int>
-
-    fun updateWatchTime(
-        playbackTrackingVideostatsWatchtimeUrl: String,
-        watchTimeList: ArrayList<Float>,
         cpn: String,
         playlistId: String?,
     ): Flow<Int>

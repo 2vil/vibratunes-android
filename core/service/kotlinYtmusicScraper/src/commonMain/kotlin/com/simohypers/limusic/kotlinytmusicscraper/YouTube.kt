@@ -109,7 +109,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -130,7 +129,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.Path
 import kotlin.jvm.JvmInline
-import kotlin.math.round
 import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -1634,103 +1632,19 @@ class YouTube {
         )
     }
 
-    suspend fun updateWatchTime(
-        watchtimeUrl: String,
-        watchtimeList: ArrayList<Float>,
-        cpn: String,
-        playlistId: String?,
-    ): Result<Int> =
-        runCatching {
-            val et = watchtimeList.takeLast(2).joinToString(",")
-            val watchtime = watchtimeList.dropLast(1).takeLast(2).joinToString(",")
-            ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to watchtime, "et" to et), playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "watchtime done")
-                }
-                return@runCatching status
-            }
-        }
-
-    suspend fun updateWatchTimeFull(
-        watchtimeUrl: String,
-        cpn: String,
-        playlistId: String?,
-    ): Result<Int> =
-        runCatching {
-            val regex = Regex("len=([^&]+)")
-            val length =
-                regex
-                    .find(watchtimeUrl)
-                    ?.groupValues
-                    ?.firstOrNull()
-                    ?.drop(4) ?: "0"
-            Logger.d(TAG, length)
-            ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to length, "et" to length), playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "watchtime full done")
-                }
-                return@runCatching status
-            }
-        }
-
     /**
-     * @return [Pair<Int, Float>]
-     * Int: status code
-     * Float: second watchtime
-     * First watchtime is 5.54
+     * Register a play in watch history: one GET of `videostatsPlaybackUrl`, as desktop's
+     * register_playback does. The watchtime and atr pings SimpMusic sent after it, one every 20 s
+     * for the whole track, kept the radio awake and are gone (issue #7).
      */
     suspend fun initPlayback(
         playbackUrl: String,
-        atrUrl: String,
-        watchtimeUrl: String,
         cpn: String,
         playlistId: String?,
-    ): Result<Pair<Int, Float>> {
-        Logger.d(TAG, "playbackUrl $playbackUrl")
-        Logger.d(TAG, "atrUrl $atrUrl")
-        Logger.d(TAG, "watchtimeUrl $watchtimeUrl")
-        return runCatching {
-            ytMusic.initPlayback(playbackUrl, cpn, null, playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "playback done")
-                    ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to "0", "et" to "5.54"), playlistId).status.value.let { firstWatchTime ->
-                        if (firstWatchTime == 204) {
-                            Logger.d(TAG, "first watchtime done")
-                            delay(5000)
-                            ytMusic.atr(atrUrl, cpn, null, playlistId).status.value.let { atr ->
-                                if (atr == 204) {
-                                    Logger.d(TAG, "atr done")
-                                    delay(500)
-                                    val secondWatchTime = (round(Random.nextFloat() * 100.0) / 100.0).toFloat() + 12f
-                                    ytMusic
-                                        .initPlayback(
-                                            watchtimeUrl,
-                                            cpn,
-                                            mapOf<String, String>("st" to "0,5.54", "et" to "5.54,$secondWatchTime"),
-                                            playlistId,
-                                        ).status.value
-                                        .let { watchtime ->
-                                            if (watchtime == 204) {
-                                                Logger.d(TAG, "watchtime done")
-                                                return@runCatching Pair(watchtime, secondWatchTime)
-                                            } else {
-                                                return@runCatching Pair(watchtime, secondWatchTime)
-                                            }
-                                        }
-                                } else {
-                                    return@runCatching Pair(atr, 0f)
-                                }
-                            }
-                        } else {
-                            return@runCatching Pair(firstWatchTime, 0f)
-                        }
-                    }
-                } else {
-                    return@runCatching Pair(status, 0f)
-                }
-            }
+    ): Result<Int> =
+        runCatching {
+            ytMusic.initPlayback(playbackUrl, cpn, null, playlistId).status.value
         }
-    }
 
     suspend fun nextYouTubePlaylists(continuation: String): Result<Pair<List<MusicTwoRowItemRenderer>, String?>> =
         runCatching {

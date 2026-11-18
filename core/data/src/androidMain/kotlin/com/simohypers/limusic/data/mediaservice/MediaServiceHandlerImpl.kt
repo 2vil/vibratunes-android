@@ -14,6 +14,7 @@ import com.simohypers.limusic.common.Config.ALBUM_CLICK
 import com.simohypers.limusic.common.Config.PLAYLIST_CLICK
 import com.simohypers.limusic.common.Config.RADIO_CLICK
 import com.simohypers.limusic.common.Config.RECOVER_TRACK_QUEUE
+import com.simohypers.limusic.common.AppVisible
 import com.simohypers.limusic.common.LOCAL_PLAYLIST_ID
 import com.simohypers.limusic.common.MERGING_DATA_TYPE
 import com.simohypers.limusic.data.lastfm.LastfmScrobbler
@@ -99,6 +100,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.single
@@ -232,7 +235,6 @@ internal class MediaServiceHandlerImpl(
     @Volatile
     private var systemEqualizerSelected = false
 
-    private var watchTimeList: ArrayList<Float> = arrayListOf()
 
     private var volumeNormalizationJob: Job? = null
 
@@ -285,7 +287,6 @@ internal class MediaServiceHandlerImpl(
 
     private var songEntityJob: Job? = null
 
-    private var jobWatchtime: Job? = null
 
     private var getDataOfNowPlayingTrackStateJob: Job? = null
 
@@ -341,7 +342,6 @@ internal class MediaServiceHandlerImpl(
         loadJob = Job()
         songEntityJob = Job()
         getFormatJob = Job()
-        jobWatchtime = Job()
         skipSilent = runBlocking { dataStoreManager.skipSilent.first() == TRUE }
         // Collected rather than read once like the settings around it: the equalizer is adjusted
         // while music is playing, and a curve that only takes effect after a restart is useless
@@ -444,13 +444,7 @@ internal class MediaServiceHandlerImpl(
                                 println("format in viewModel: $formatTemp")
                                 Logger.d(TAG, "Collect format ${formatTemp.videoId}")
                                 Logger.d(TAG, "Format expire at ${formatTemp.expiredTime}")
-                                Logger.d(TAG, "AtrUrl ${formatTemp.playbackTrackingAtrUrl}")
-                                initPlayback(
-                                    formatTemp.playbackTrackingVideostatsPlaybackUrl,
-                                    formatTemp.playbackTrackingAtrUrl,
-                                    formatTemp.playbackTrackingVideostatsWatchtimeUrl,
-                                    formatTemp.cpn,
-                                )
+                                initPlayback(formatTemp.playbackTrackingVideostatsPlaybackUrl, formatTemp.cpn)
                             }
                         }
                     }
@@ -653,79 +647,13 @@ internal class MediaServiceHandlerImpl(
 
     private fun initPlayback(
         playback: String?,
-        atr: String?,
-        watchTime: String?,
         cpn: String?,
     ) {
-        jobWatchtime?.cancel()
+        if (playback == null || cpn == null) return
         coroutineScope.launch {
-            if (playback != null && atr != null && watchTime != null && cpn != null) {
-                watchTimeList = arrayListOf()
-                streamRepository
-                    .initPlayback(playback, atr, watchTime, cpn, queueData.value.data.playlistId)
-                    .collect {
-                        if (it.first == 204) {
-                            Logger.d("Check initPlayback", "Success")
-                            watchTimeList.add(0f)
-                            watchTimeList.add(5.54f)
-                            watchTimeList.add(it.second)
-                            updateWatchTime()
-                        }
-                    }
+            streamRepository.initPlayback(playback, cpn, queueData.value.data.playlistId).collect {
+                if (it == 204) Logger.d("Check initPlayback", "Success")
             }
-        }
-    }
-
-    private fun updateWatchTime() {
-        coroutineScope.launch {
-            jobWatchtime =
-                launch {
-                    simpleMediaState.collect { state ->
-                        if (state is SimpleMediaState.Progress) {
-                            val value = state.progress
-                            if (value > 0 && watchTimeList.isNotEmpty()) {
-                                val second = (value / 1000).toFloat()
-                                if (second in watchTimeList.last()..watchTimeList.last() + 1.2f) {
-                                    val watchTimeUrl =
-                                        _format.value?.playbackTrackingVideostatsWatchtimeUrl
-                                    val cpn = _format.value?.cpn
-                                    if (second + 20.23f < (player.duration / 1000).toFloat()) {
-                                        watchTimeList.add(second + 20.23f)
-                                        if (watchTimeUrl != null && cpn != null) {
-                                            streamRepository
-                                                .updateWatchTime(
-                                                    watchTimeUrl,
-                                                    watchTimeList,
-                                                    cpn,
-                                                    queueData.value.data.playlistId,
-                                                ).collect { response ->
-                                                    if (response == 204) {
-                                                        Logger.d("Check updateWatchTime", "Success")
-                                                    }
-                                                }
-                                        }
-                                    } else {
-                                        watchTimeList.clear()
-                                        if (watchTimeUrl != null && cpn != null) {
-                                            streamRepository
-                                                .updateWatchTimeFull(
-                                                    watchTimeUrl,
-                                                    cpn,
-                                                    queueData.value.data.playlistId,
-                                                ).collect { response ->
-                                                    if (response == 204) {
-                                                        Logger.d("Check updateWatchTimeFull", "Success")
-                                                    }
-                                                }
-                                        }
-                                    }
-                                    Logger.d("Check updateWatchTime", watchTimeList.toString())
-                                }
-                            }
-                        }
-                    }
-                }
-            jobWatchtime?.join()
         }
     }
 
@@ -796,13 +724,15 @@ internal class MediaServiceHandlerImpl(
                 // the beginning (#2152). The position is otherwise only saved on pause /
                 // track change / release, which misses uninterrupted background playback.
                 val positionPersistIntervalMs = 5_000L
-                // Named so the persist counter below cannot drift out of step with it, which is
-                // what a second hardcoded copy of the number did.
-                val tickIntervalMs = 50L
                 var sinceLastPositionSaveMs = 0L
                 var sinceDiscordPositionMs = 0L
+                var lastTick = TimeSource.Monotonic.markNow()
                 while (true) {
-                    delay(tickIntervalMs)
+                    // 20 a second for a visible seek bar, once a second for everything else, which
+                    // is all the screen-off consumers need (issue #7). Coming back wakes it at once.
+                    if (AppVisible.state.value) delay(50) else withTimeoutOrNull(1_000) { AppVisible.state.first { it } }
+                    val tickIntervalMs = lastTick.elapsedNow().inWholeMilliseconds
+                    lastTick = TimeSource.Monotonic.markNow()
                     _simpleMediaState.value = SimpleMediaState.Progress(player.currentPosition)
                     sinceLastPositionSaveMs += tickIntervalMs
                     if (sinceLastPositionSaveMs >= positionPersistIntervalMs) {
@@ -1842,8 +1772,6 @@ internal class MediaServiceHandlerImpl(
             songEntityJob = null
             getFormatJob?.cancel()
             getFormatJob = null
-            jobWatchtime?.cancel()
-            jobWatchtime = null
             getDataOfNowPlayingTrackStateJob?.cancel()
             getDataOfNowPlayingTrackStateJob = null
             // Cancel coroutine scope (cancelling backgroundScope also takes the Discord card down)

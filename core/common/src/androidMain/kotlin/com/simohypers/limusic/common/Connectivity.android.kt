@@ -15,10 +15,29 @@ fun watchConnectivity(context: Context) {
     Connectivity.update(active?.networkHandle, validated(manager.getNetworkCapabilities(active)))
     manager.registerDefaultNetworkCallback(
         object : ConnectivityManager.NetworkCallback() {
+            private var blocked = false
+
             override fun onCapabilitiesChanged(
                 network: Network,
                 networkCapabilities: NetworkCapabilities,
-            ) = Connectivity.update(network.networkHandle, validated(networkCapabilities))
+            ) {
+                if (!blocked) Connectivity.update(network.networkHandle, validated(networkCapabilities))
+            }
+
+            // Android cuts a background app off the network on some phones (battery saver, data saver,
+            // Samsung's sleeping apps): the network is still there, but every lookup fails with
+            // EAI_NODATA. For the app that is offline, so retry loops wait instead of spinning (issue #7).
+            override fun onBlockedStatusChanged(
+                network: Network,
+                blocked: Boolean,
+            ) {
+                this.blocked = blocked
+                if (blocked) {
+                    Connectivity.update(null, false)
+                } else {
+                    Connectivity.update(network.networkHandle, validated(manager.getNetworkCapabilities(network)))
+                }
+            }
 
             override fun onLost(network: Network) = Connectivity.lost(network.networkHandle)
         },

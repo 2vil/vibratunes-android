@@ -1,5 +1,6 @@
 package com.simohypers.limusic.discord
 
+import com.simohypers.limusic.common.Connectivity
 import com.simohypers.limusic.ktorext.getEngine
 import com.simohypers.limusic.logger.Logger
 import io.ktor.client.HttpClient
@@ -105,6 +106,15 @@ class DiscordPresence(
                 withContext(NonCancellable) { disconnect() }
             }
         }
+        // Back online: connect now rather than when the backoff says (issue #7).
+        scope.launch {
+            Connectivity.reconnects().collect {
+                post {
+                    lastConnectTry = null
+                    backoff = CONNECT_RETRY_MIN
+                }
+            }
+        }
     }
 
     private fun post(action: suspend () -> Unit) {
@@ -187,6 +197,8 @@ class DiscordPresence(
         gateway?.let { return it.takeIf { g -> g.ready } }
         // Two rejected tokens in a row, even after a refresh: stop until the switch or account changes.
         if (authFailures >= 2) return null
+        // Offline, a connect is a failed lookup every minute; the reconnect watch in init wakes us.
+        if (!Connectivity.state.value.hasNetwork) return null
         lastConnectTry?.let { if (monoNow() - it < backoff) return null }
         lastConnectTry = monoNow()
         backoff = (backoff * 2).coerceAtMost(CONNECT_RETRY_MAX)
@@ -198,6 +210,8 @@ class DiscordPresence(
     }
 
     private fun retryIn(): Long {
+        // socket() skips offline without a try, so the backoff below would read as "due now" forever.
+        if (!Connectivity.state.value.hasNetwork) return IDLE_TICK
         val since = lastConnectTry ?: return MIN_WAIT
         return (backoff - (monoNow() - since)).coerceIn(MIN_WAIT, IDLE_TICK)
     }
