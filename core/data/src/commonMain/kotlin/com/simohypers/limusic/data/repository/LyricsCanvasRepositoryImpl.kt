@@ -365,6 +365,13 @@ internal class LyricsCanvasRepositoryImpl(
                 return@flow
             }
 
+            // A track AM had nothing for is asked again a week later, not on every play (issue #7).
+            val missedAt = song.canvasUrl?.takeIf { it.startsWith(AM_MISS) }?.removePrefix(AM_MISS)?.toLongOrNull()
+            if (missedAt != null && Clock.System.now().epochSeconds - missedAt < AM_MISS_TTL_SECONDS) {
+                emit(Resource.Error<CanvasResult>("No animated artwork"))
+                return@flow
+            }
+
             // The caller launches this outside the collector that triggered it, so a second
             // timeline emission for the same track — the duration changes once buffering finishes —
             // fires an identical second search while the first is still in the air. Claiming the id
@@ -380,6 +387,7 @@ internal class LyricsCanvasRepositoryImpl(
             val albumName = song.albumName?.takeIf { it.isNotBlank() && it != PLACEHOLDER_ALBUM_NAME }
             Logger.d(AM_ARTWORK_TAG, "resolving $videoId — album=$albumName title=${song.title} artist=$artist")
 
+            var searchFailed = false
             try {
                 // Tier 1 — the album name, which is what AM indexes one animated artwork against.
                 // Only an exact answer is taken: see pickAlbumMatch for why a near-miss is worse
@@ -388,7 +396,10 @@ internal class LyricsCanvasRepositoryImpl(
                     albumName?.let { name ->
                         appleMusic
                             .searchAMAlbum("$name $artist".cleanForSearch(), limit = AM_SEARCH_LIMIT)
-                            .onFailure { Logger.e(AM_ARTWORK_TAG, "album search failed: ${it.message}") }
+                            .onFailure {
+                                searchFailed = true
+                                Logger.e(AM_ARTWORK_TAG, "album search failed: ${it.message}")
+                            }
                             .getOrNull()
                             ?.pickAlbumMatch(name, artist)
                     }
@@ -400,7 +411,10 @@ internal class LyricsCanvasRepositoryImpl(
                 val album =
                     byAlbum ?: appleMusic
                         .searchAMSongsWithAlbums("${song.title} $artist".cleanForSearch(), limit = AM_SEARCH_LIMIT)
-                        .onFailure { Logger.e(AM_ARTWORK_TAG, "song search failed: ${it.message}") }
+                        .onFailure {
+                            searchFailed = true
+                            Logger.e(AM_ARTWORK_TAG, "song search failed: ${it.message}")
+                        }
                         .getOrNull()
                         ?.pickSongMatch(
                             title = song.title,
@@ -418,6 +432,10 @@ internal class LyricsCanvasRepositoryImpl(
                         ?.video
                 Logger.d(AM_ARTWORK_TAG, "Matched ${album?.attributes?.name} for $videoId --> $master")
                 if (master == null) {
+                    // Only a real answer is remembered, and never over a url an older build saved.
+                    if (!searchFailed && (song.canvasUrl == null || missedAt != null)) {
+                        localDataSource.updateCanvasUrl(videoId, AM_MISS + Clock.System.now().epochSeconds)
+                    }
                     emit(Resource.Error<CanvasResult>("No animated artwork"))
                     return@flow
                 }
@@ -573,6 +591,10 @@ private const val LYRICS_PROVIDER_BUDGET_MS = 10_000L
 
 private const val AM_ARTWORK_TAG = "AMArtwork"
 private const val AM_SEARCH_LIMIT = 5
+
+/** `song.canvasUrl` of a track AM has no animated artwork for: this, then the epoch second it was asked. */
+private const val AM_MISS = "am-miss:"
+private const val AM_MISS_TTL_SECONDS = 7 * 24 * 60 * 60L
 
 // Narrowest animated-artwork rendition considered sharp enough. On the measured ladders this lands
 // on 830x1106 for the tall cut and 768x768 for the square one, both H.264 at roughly 2-3 Mbps.

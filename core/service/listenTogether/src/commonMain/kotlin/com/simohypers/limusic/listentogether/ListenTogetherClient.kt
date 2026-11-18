@@ -5,6 +5,7 @@
  */
 package com.simohypers.limusic.listentogether
 
+import com.simohypers.limusic.common.AppVisible
 import com.simohypers.limusic.common.Connectivity
 import com.simohypers.limusic.ktorext.getEngine
 import com.simohypers.limusic.logger.Logger
@@ -307,7 +308,10 @@ class ListenTogetherClient(
 
     /** Keeps the socket alive: the server drops a connection that says nothing for 90s. */
     private suspend fun pingLoop() {
-        while (send(MessageTypes.PING)) delay(PING_INTERVAL)
+        while (send(MessageTypes.PING)) {
+            // With no screen on, every 60 s instead of 25 (issue #7); coming back pings at once.
+            if (AppVisible.state.value) delay(PING_INTERVAL) else withTimeoutOrNull(PING_INTERVAL_HIDDEN) { AppVisible.state.first { it } }
+        }
     }
 
     /** When the last frame came in. The server answers every ping, so silence means a dead socket. */
@@ -332,7 +336,8 @@ class ListenTogetherClient(
                     }
                 }
             }
-            while (lastHeard.elapsedNow() < SILENCE_LIMIT) delay(1.seconds)
+            // ponytail: a late pong right as a screen comes back can trip the shorter limit; that is one resumed reconnect
+            while (lastHeard.elapsedNow() < if (AppVisible.state.value) SILENCE_LIMIT else SILENCE_LIMIT_HIDDEN) delay(1.seconds)
             Logger.w(TAG, "Server went silent; reconnecting")
             live.cancel()
         }
@@ -382,11 +387,15 @@ class ListenTogetherClient(
         /** Desktop pings every 25s; the server's idle limit is 90s. */
         private val PING_INTERVAL = 25.seconds
 
+        /** With no screen on. Still under the server's 90 s and Cloudflare's 100 s idle limits. */
+        private val PING_INTERVAL_HIDDEN = 60.seconds
+
         private val INITIAL_RECONNECT_DELAY: Duration = 1.seconds
         private val MAX_RECONNECT_DELAY: Duration = 32.seconds
 
         /** Desktop's: this long without a frame and the socket is taken for dead. */
         private val SILENCE_LIMIT: Duration = 60.seconds
+        private val SILENCE_LIMIT_HIDDEN: Duration = PING_INTERVAL_HIDDEN + 35.seconds
 
         /** How long a socket gets to answer a ping after the phone changed networks. */
         private val NETWORK_CHANGE_LIMIT: Duration = 10.seconds

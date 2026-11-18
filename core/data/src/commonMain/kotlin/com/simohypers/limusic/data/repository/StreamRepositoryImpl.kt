@@ -289,61 +289,17 @@ internal class StreamRepositoryImpl(
 
     override fun initPlayback(
         playback: String,
-        atr: String,
-        watchTime: String,
         cpn: String,
         playlistId: String?,
-    ): Flow<Pair<Int, Float>> =
+    ): Flow<Int> =
         flow {
             youTube
-                .initPlayback(playback, atr, watchTime, cpn, playlistId)
-                .onSuccess { response ->
-                    emit(response)
-                }.onFailure {
+                .initPlayback(playback, cpn, playlistId)
+                .onSuccess { emit(it) }
+                .onFailure {
                     Logger.e("InitPlayback", "Error: ${it.message}")
-                    emit(Pair(0, 0f))
+                    emit(0)
                 }
-        }.flowOn(Dispatchers.IO)
-
-    override fun updateWatchTimeFull(
-        watchTime: String,
-        cpn: String,
-        playlistId: String?,
-    ): Flow<Int> =
-        flow {
-            runCatching {
-                youTube
-                    .updateWatchTimeFull(watchTime, cpn, playlistId)
-                    .onSuccess { response ->
-                        emit(response)
-                    }.onFailure {
-                        Logger.w("StreamRepositoryImpl", "updateWatchTimeFull: $it")
-                        emit(0)
-                    }
-            }
-        }.flowOn(Dispatchers.IO)
-
-    override fun updateWatchTime(
-        playbackTrackingVideostatsWatchtimeUrl: String,
-        watchTimeList: ArrayList<Float>,
-        cpn: String,
-        playlistId: String?,
-    ): Flow<Int> =
-        flow {
-            runCatching {
-                youTube
-                    .updateWatchTime(
-                        playbackTrackingVideostatsWatchtimeUrl,
-                        watchTimeList,
-                        cpn,
-                        playlistId,
-                    ).onSuccess { response ->
-                        emit(response)
-                    }.onFailure {
-                        Logger.w("StreamRepositoryImpl", "updateWatchTime: $it")
-                        emit(0)
-                    }
-            }
         }.flowOn(Dispatchers.IO)
 
 

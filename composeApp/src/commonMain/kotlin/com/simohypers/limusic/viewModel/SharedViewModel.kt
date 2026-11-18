@@ -845,7 +845,8 @@ class SharedViewModel(
             }
 
             if (!resolved) {
-                nowPlayingState.value?.songEntity?.canvasUrl?.let { url ->
+                // Not the repository's "no artwork" mark, which is not a url.
+                nowPlayingState.value?.songEntity?.canvasUrl?.takeIf { it.startsWith("http") }?.let { url ->
                     _nowPlayingScreenData.update {
                         it.copy(
                             canvasData =

@@ -36,6 +36,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.eygraber.uri.toKmpUriOrNull
+import com.simohypers.limusic.common.AppVisible
 import com.simohypers.limusic.common.FIRST_TIME_MIGRATION
 import com.simohypers.limusic.common.SELECTED_LANGUAGE
 import com.simohypers.limusic.common.STATUS_DONE
@@ -94,6 +95,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        AppVisible.state.value = true
         startMusicService()
         deviceLink.setForeground(true)
         viewModel.syncLikedMusic()
@@ -101,6 +103,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        AppVisible.state.value = false
         deviceLink.setForeground(false)
         if (shouldUnbind) {
             unbindService(serviceConnection)

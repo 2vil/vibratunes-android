@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.datasource.cache.Cache
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -23,6 +24,8 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
+import com.simohypers.limusic.common.AppVisible
+import com.simohypers.limusic.media3.extension.isFullyCached
 import com.simohypers.limusic.domain.data.player.AudioOutput
 import com.simohypers.limusic.domain.data.player.GenericCastState
 import com.simohypers.limusic.domain.data.player.GenericMediaItem
@@ -48,6 +51,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
@@ -135,6 +140,7 @@ internal class CrossfadeExoPlayerAdapter(
     private val mediaSourceFactory: MergingMediaSourceFactory,
     private val audioAttributes: AudioAttributes,
     private val streamRepository: StreamRepository,
+    private val downloadCache: Cache,
 ) : MediaPlayerInterface {
     // ========== Internal State Enum (same as GstreamerPlayerAdapter) ==========
 
@@ -579,7 +585,7 @@ internal class CrossfadeExoPlayerAdapter(
      * Audio focus is NOT handled per-player: it is managed once at the adapter level
      * (see the Audio Focus section) so it survives every player swap (#2155).
      */
-    private fun createExoPlayerInstance(): ExoPlayer {
+    private fun createExoPlayerInstance(cacheKey: String? = null): ExoPlayer {
         val sleepFade = SleepFadeAudioProcessor { internalSleepFadeFactor }
         val equalizer = EqualizerAudioProcessor { internalEqualizerCurve }
 
@@ -630,8 +636,10 @@ internal class CrossfadeExoPlayerAdapter(
                             0,
                             0,
                         ).build(),
-                ).setWakeMode(C.WAKE_MODE_NETWORK)
-                .setHandleAudioBecomingNoisy(true)
+                ).setWakeMode(
+                    // A download plays with no network, so it holds no Wi-Fi lock (issue #7).
+                    if (cacheKey != null && downloadCache.isFullyCached(cacheKey, 0L)) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK,
+                ).setHandleAudioBecomingNoisy(true)
                 .setSeekForwardIncrementMs(5000)
                 .setSeekBackIncrementMs(5000)
                 .setMediaSourceFactory(mediaSourceFactory)
@@ -1721,8 +1729,9 @@ internal class CrossfadeExoPlayerAdapter(
                         player = cachedPlayerEntry.player
                     } else {
                         Logger.d(TAG, "Creating new player for $videoId")
-                        player = createExoPlayerInstance()
-                        player.setMediaItem(mediaItem.toMedia3MediaItem())
+                        val item = mediaItem.toMedia3MediaItem()
+                        player = createExoPlayerInstance(item.localConfiguration?.customCacheKey)
+                        player.setMediaItem(item)
                         player.prepare()
                     }
 
@@ -2314,9 +2323,20 @@ internal class CrossfadeExoPlayerAdapter(
                         // Ignore query errors - don't log to avoid spam
                     }
 
-                    delay(50) // Update every 50ms
+                    if (fineTick()) delay(50) else withTimeoutOrNull(1_000) { AppVisible.state.first { it } }
                 }
             }
+    }
+
+    /**
+     * 50 ms while a screen shows the position, in a Listen Together room (guests follow the host's
+     * position) and over a track's last seconds (the crossfade start and the track change); once a
+     * second otherwise (issue #7). The freeze watch only sees stops of a second or more then.
+     */
+    private fun fineTick(): Boolean {
+        if (AppVisible.state.value || crossfadeSuppressed || cachedDuration <= 0) return true
+        val left = (cachedDuration - cachedPosition) / internalPlaybackSpeed.coerceAtLeast(0.1f)
+        return left < crossfadeDurationMs + 2_000
     }
 
     private fun stopPositionUpdates() {
@@ -2398,8 +2418,9 @@ internal class CrossfadeExoPlayerAdapter(
                         try {
                             // Before prepare, so it comes ahead of the lookup lines it causes.
                             Logger.i(PLAYBACK, "preloading next: ${mediaItem.mediaId}")
-                            val player = createExoPlayerInstance()
-                            player.setMediaItem(mediaItem.toMedia3MediaItem())
+                            val item = mediaItem.toMedia3MediaItem()
+                            val player = createExoPlayerInstance(item.localConfiguration?.customCacheKey)
+                            player.setMediaItem(item)
                             player.prepare()
                             precachedPlayers[mediaItem.mediaId] = PrecachedPlayer(player, mediaItem)
                         } catch (e: Exception) {

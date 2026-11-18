@@ -3,7 +3,6 @@ package com.simohypers.limusic.service.backup
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.simohypers.limusic.domain.manager.DataStoreManager
@@ -49,9 +48,11 @@ class AutoBackupScheduler(
 
         Logger.d(TAG, "Scheduling auto backup: interval=$intervalValue $intervalUnit")
 
+        // No network constraint: the backup is a local file. With one, every network drop stopped
+        // the run mid-zip and WorkManager started it again on the next connection (issue #7).
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
             .setRequiresBatteryNotLow(true)
+            .setRequiresStorageNotLow(true)
             .build()
 
         val request = PeriodicWorkRequestBuilder<AutoBackupWorker>(
