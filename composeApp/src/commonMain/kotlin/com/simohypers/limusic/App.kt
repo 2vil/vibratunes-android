@@ -169,16 +169,16 @@ fun App(
         val data = intent.data
         Logger.d("MainActivity", "onCreate: $data")
         if (data != null) {
-            if (data.scheme == "limusic" && data.host == "notification") {
+            if (data.scheme == "vibratunes" && data.host == "notification") {
                 viewModel.setIntent(null)
                 navController.navigate(
                     NotificationDestination,
                 )
-            } else if (data.scheme == "limusic" && data.host == "update") {
+            } else if (data.scheme == "vibratunes" && data.host == "update") {
                 // The update notification: show the banner, even with the banner switch off.
                 viewModel.setIntent(null)
                 runCatching { Updater.checkNow() }
-            } else if (data.scheme == "limusic" && data.host == "discord-auth") {
+            } else if (data.scheme == "vibratunes" && data.host == "discord-auth") {
                 // Discord's authorize page sends the user back here with ?code=&state= (or ?error=).
                 viewModel.setIntent(null)
                 viewModel.completeDiscordLogin(
@@ -186,7 +186,7 @@ fun App(
                     data.getQueryParameter("state"),
                     data.getQueryParameter("error_description") ?: data.getQueryParameter("error"),
                 )
-            } else if (data.scheme == "limusic") {
+            } else if (data.scheme == "vibratunes") {
                 // limusic://watch?v=VIDEO_ID  (host="watch", no path)
                 // limusic://playlist?list=PLAYLIST_ID
                 // limusic://channel/CHANNEL_ID

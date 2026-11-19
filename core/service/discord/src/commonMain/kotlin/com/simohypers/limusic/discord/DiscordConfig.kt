@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 data class DiscordConfig(
     /** Which slot Discord repeats after "Listening to": `app` | `line1` | `line2`. */
     @SerialName("status_line") val statusLine: String = "line2",
-    /** Replaces the registered application name. Empty keeps "Limusic". */
+    /** Replaces the registered application name. Empty keeps "Vibratunes". */
     @SerialName("app_name") val appName: String = "",
     /** `title` | `artist` | `album`. */
     val line1: String = "title",
@@ -31,7 +31,7 @@ data class DiscordConfig(
     @SerialName("link_cover") val linkCover: Boolean = false,
     /** Ignored while paused: Discord has no paused state, so a bar left up keeps running. */
     val timestamps: Boolean = true,
-    /** The Limusic badge in the artwork's corner. Needs [cover]: alone it becomes the image. */
+    /** The Vibratunes badge in the artwork's corner. Needs [cover]: alone it becomes the image. */
     val badge: Boolean = true,
     /** Keep the card while paused, once something has played this session. */
     @SerialName("show_paused") val showPaused: Boolean = false,
@@ -72,11 +72,11 @@ data class DiscordTrack(
 /** The DataStore key the config blob lives under, same name as desktop's setting. */
 const val DISCORD_CONFIG_KEY = "discord_rpc_config"
 
-const val APP_NAME = "Limusic"
-const val APP_URL = "https://github.com/SimoHypers/Limusic"
+const val APP_NAME = "Vibratunes"
+const val APP_URL = "https://github.com/2vil/vibratunes"
 
 /** The badge Discord draws over the artwork's corner. Served from the desktop repo, like desktop. */
-const val BADGE_URL = "https://raw.githubusercontent.com/SimoHypers/limusic/master/src-tauri/icons/128x128.png"
+const val BADGE_URL = "https://raw.githubusercontent.com/2vil/vibratunes/main/src-tauri/icons/128x128.png"
 
 private const val SONG_URL = "https://music.youtube.com/watch?v="
 private const val ARTIST_URL = "https://music.youtube.com/channel/"

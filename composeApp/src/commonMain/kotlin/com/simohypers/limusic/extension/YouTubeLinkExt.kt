@@ -2,7 +2,7 @@ package com.simohypers.limusic.extension
 
 import com.eygraber.uri.Uri
 
-private const val APP_SCHEME = "limusic"
+private const val APP_SCHEME = "vibratunes"
 
 /**
  * Turn a pasted YouTube link into the `limusic://` deep link that already drives the app.

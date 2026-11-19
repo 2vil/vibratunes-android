@@ -335,7 +335,7 @@ internal suspend fun exportLog(chooserTitle: String): Boolean {
     return shareImage(bytes, fileName, chooserTitle, mimeType = "text/plain")
 }
 
-private const val NEW_ISSUE = "https://github.com/SimoHypers/limusic-android/issues/new"
+private const val NEW_ISSUE = "https://github.com/2vil/vibratunes-android/issues/new"
 
 /**
  * GitHub's bug form (`.github/ISSUE_TEMPLATE/bug_report.yml`) with the version and the phone filled

@@ -748,7 +748,7 @@ private fun PartSheet(
                 OutlinedTextField(
                     value = appName,
                     onValueChange = { appName = it.take(64) },
-                    placeholder = { Text("Limusic") },
+                    placeholder = { Text("Vibratunes") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )

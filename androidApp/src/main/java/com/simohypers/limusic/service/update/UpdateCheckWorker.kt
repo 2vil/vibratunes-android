@@ -34,7 +34,7 @@ private const val CHANNEL_ID = "app_updates"
 private const val NOTIFICATION_ID = 7001
 
 /**
- * The update check for when Limusic is closed: every six hours while online, a notification for
+ * The update check for when Vibratunes is closed: every six hours while online, a notification for
  * each new version, once. An app in front has the banner, so it is left alone. The tap opens
  * limusic://update, which shows the banner even with the banner switch off.
  */

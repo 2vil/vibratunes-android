@@ -37,7 +37,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.limusic.android"
+        applicationId = "com.vibratunes.app"
         minSdk = 26
         targetSdk = 36
         versionName =
@@ -97,7 +97,7 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            // The id stays com.limusic.android in every build type: it is the installed app.
+            // The id stays com.vibratunes.app in every build type: it is the installed app.
             signingConfig = signingConfigs.findByName("limusic") ?: signingConfigs.getByName("debug")
         }
     }

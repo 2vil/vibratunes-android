@@ -179,7 +179,7 @@
     <string name="use_your_system_equalizer">Use your system equalizer</string>
     <string name="version_format" translatable="false">v%1$s</string>
     <string name="update_available">Version %1$s is available</string>
-    <string name="update_closes_to_install">Limusic closes while it installs</string>
+    <string name="update_closes_to_install">Vibratunes closes while it installs</string>
     <string name="update_install">Update</string>
     <string name="update_downloading">Downloading version %1$s</string>
     <string name="update_installing">Installing version %1$s</string>
@@ -191,10 +191,10 @@
     <string name="up_to_date">You are using the latest version.</string>
     <string name="update_check_failed">Update check failed: %1$s</string>
     <string name="update_banner">Update banner</string>
-    <string name="update_banner_description">Show a banner in the app when a new version of Limusic is available.</string>
+    <string name="update_banner_description">Show a banner in the app when a new version of Vibratunes is available.</string>
     <string name="update_notification">Update notification</string>
-    <string name="update_notification_description">Get a notification when a new version is out, even while Limusic is closed.</string>
-    <string name="update_notification_title">Limusic %1$s is available</string>
+    <string name="update_notification_description">Get a notification when a new version is out, even while Vibratunes is closed.</string>
+    <string name="update_notification_title">Vibratunes %1$s is available</string>
     <string name="update_notification_text">Tap to update.</string>
     <string name="update_notification_channel">App updates</string>
     <string name="whats_new">What's new</string>
@@ -463,7 +463,7 @@
     <string name="backup_downloaded">Include downloaded songs</string>
     <string name="backup_downloaded_description">Put the downloaded songs themselves in the backup. The file gets as big as your downloads.</string>
     <string name="auto_backup">Auto backup</string>
-    <string name="auto_backup_description">Back up your data to the Downloads/Limusic folder on a schedule.</string>
+    <string name="auto_backup_description">Back up your data to the Downloads/Vibratunes folder on a schedule.</string>
     <string name="backup_frequency">Backup frequency</string>
     <string name="daily">Daily</string>
     <string name="weekly">Weekly</string>
@@ -492,7 +492,7 @@
     <string name="discord_signed_out_notice">Sign in to show this card on your profile.</string>
     <string name="discord_paused_notice">Paused: the card comes back when playback resumes.</string>
     <string name="discord_sign_in">Sign in with Discord</string>
-    <string name="discord_sign_in_hint">Opens Discord in your browser. Limusic only gets to set what you are listening to.</string>
+    <string name="discord_sign_in_hint">Opens Discord in your browser. Vibratunes only gets to set what you are listening to.</string>
     <string name="discord_signed_in">Signed in</string>
     <string name="discord_sign_out">Sign out</string>
     <string name="discord_not_signed_in">Not signed in</string>
@@ -505,19 +505,19 @@
     <string name="discord_show_paused">Keep while paused</string>
     <string name="discord_show_paused_hint">Keeps the card up while paused, without the progress bar.</string>
     <string name="discord_hide_details">Hide details</string>
-    <string name="discord_hide_details_hint">Only says you are listening to Limusic: no song, artist or artwork.</string>
+    <string name="discord_hide_details_hint">Only says you are listening to Vibratunes: no song, artist or artwork.</string>
     <string name="discord_card">Card</string>
     <string name="discord_status_line">Status</string>
     <string name="discord_status_line_hint">What the member list shows under your name.</string>
     <string name="discord_app_name">App name</string>
-    <string name="discord_app_name_hint">Shown after "Listening to". Leave empty for Limusic.</string>
+    <string name="discord_app_name_hint">Shown after "Listening to". Leave empty for Vibratunes.</string>
     <string name="discord_line1">First line</string>
     <string name="discord_line2">Second line</string>
     <string name="discord_line3">Third line</string>
     <string name="discord_line3_hint">Discord also shows it when someone holds the artwork.</string>
     <string name="discord_artwork">Artwork</string>
-    <string name="discord_badge">Limusic badge</string>
-    <string name="discord_badge_hint">A small Limusic logo on the artwork's corner.</string>
+    <string name="discord_badge">Vibratunes badge</string>
+    <string name="discord_badge_hint">A small Vibratunes logo on the artwork's corner.</string>
     <string name="discord_link_cover">Artwork opens the album</string>
     <string name="discord_timeline">Progress bar</string>
     <string name="discord_timeline_hint">Discord has no paused state, so the bar only shows while playing.</string>
@@ -535,15 +535,15 @@
     <string name="discord_button_listen">Listen on YouTube Music</string>
     <string name="discord_button_album">View album</string>
     <string name="discord_button_artist">View artist</string>
-    <string name="discord_button_app">Get Limusic</string>
+    <string name="discord_button_app">Get Vibratunes</string>
     <string name="discord_button_off">None</string>
     <string name="discord_reset">Reset the card</string>
     <string name="discord_done">Done</string>
     <string name="lastfm_scrobbling_as">Scrobbling to Last.fm as %1$s</string>
     <string name="lastfm_connect_timeout">Last.fm sign-in timed out. Try again.</string>
     <string name="lastfm_connect">Connect Last.fm</string>
-    <string name="lastfm_connect_hint">Opens Last.fm in your browser to approve Limusic.</string>
-    <string name="lastfm_approve_in_browser">Approve Limusic on Last.fm in your browser, then come back</string>
+    <string name="lastfm_connect_hint">Opens Last.fm in your browser to approve Vibratunes.</string>
+    <string name="lastfm_approve_in_browser">Approve Vibratunes on Last.fm in your browser, then come back</string>
     <string name="lastfm_scrobble">Scrobble</string>
     <string name="lastfm_scrobble_hint">Off pauses scrobbling without disconnecting.</string>
     <string name="lastfm_not_connected">Not connected</string>
@@ -708,7 +708,7 @@
     <string name="settings_downloads">Downloads</string>
     <string name="settings_about_hint">Version, credits, app log</string>
     <string name="developer_name" translatable="false">SimoHypers</string>
-    <string name="credit_license">Limusic comes with no warranty. You may share and change it under the GNU General Public License v3.</string>
+    <string name="credit_license">Vibratunes comes with no warranty. You may share and change it under the GNU General Public License v3.</string>
     <string name="view_license">View license</string>
     <string name="copyright_limusic" translatable="false">©%1$s SimoHypers</string>
     <string name="ltd_alone_hint">Nobody else yet. Share the code above to fill the room.</string>
@@ -747,7 +747,7 @@
     <string name="ltd_remove_hint">%1$s leaves the room</string>
     <string name="ltd_resync_hint">Jump to where the host is now</string>
     <string name="ltd_share_invite">Share invite</string>
-    <string name="ltd_share_text">Listen with me on Limusic. Room code: %1$s</string>
+    <string name="ltd_share_text">Listen with me on Vibratunes. Room code: %1$s</string>
     <string name="ltd_start_room">Start a room</string>
     <string name="ltd_start_room_hint">Get a code to share. Everyone hears what you play.</string>
     <string name="ltd_sync_server">Sync server</string>
@@ -906,11 +906,11 @@
     <string name="sort_failed">Couldn’t sort this playlist</string>
     <string name="sort_not_saved">Sorted, but couldn’t save it to YouTube</string>
     <string name="devices">Devices</string>
-    <string name="devices_not_linked">Control Limusic on your computer from this phone</string>
+    <string name="devices_not_linked">Control Vibratunes on your computer from this phone</string>
     <string name="devices_title">Play anywhere</string>
     <string name="devices_subtitle">Your devices control each other, and the music moves between them.</string>
     <string name="devices_connect_title">Connect to your computer</string>
-    <string name="devices_step_open">On your computer, open Limusic: Settings › Devices › Link a phone</string>
+    <string name="devices_step_open">On your computer, open Vibratunes: Settings › Devices › Link a phone</string>
     <string name="devices_step_type">Type the code it shows</string>
     <string name="devices_this_phone">This phone</string>
     <string name="devices_playing_here">Playing here</string>
@@ -1039,7 +1039,7 @@
     <string name="switch_channel">Switch channel</string>
     <string name="sign_out">Sign out</string>
     <string name="remove_account">Remove account</string>
-    <string name="remove_account_title">Remove from Limusic?</string>
+    <string name="remove_account_title">Remove from Vibratunes??</string>
     <string name="remove_account_desc">%1$s is only removed from this list. The Google account itself is not affected, and you can sign in with it again whenever you like.</string>
     <string name="choose_channel">Choose a YouTube channel</string>
     <string name="choose_channel_desc">Library, likes and playlists will use this channel. You can switch again later.</string>

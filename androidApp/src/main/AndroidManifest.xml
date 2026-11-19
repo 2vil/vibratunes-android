@@ -151,7 +151,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="limusic" />
+                <data android:scheme="vibratunes" />
             </intent-filter>
 
             <!-- Discord OAuth redirect, registered on the Discord application. -->
@@ -163,7 +163,7 @@
 
                 <data
                     android:host="discord-auth"
-                    android:scheme="limusic" />
+                    android:scheme="vibratunes" />
             </intent-filter>
 
             <!-- Share filter -->
