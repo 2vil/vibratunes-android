@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -175,6 +176,8 @@ fun QueueBottomSheet(
                     QueueList(
                         onMore = { index, track -> moreFor = index to track },
                         bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                        // Over the frosted cover where there is one; otherwise the plain sheet.
+                        overCover = isLyricsBlurSupported(),
                         modifier = Modifier.weight(1f),
                     ) {
                         nowPlaying?.takeIf { it.mediaId.isNotEmpty() }?.let { item ->
@@ -253,6 +256,8 @@ internal fun QueueList(
     onMore: (Int, Track) -> Unit,
     /** Room kept under the list for the navigation bar, when the list runs to the screen's bottom. */
     bottomInset: Dp,
+    /** The list is drawn over the cover (a blur or its colours), not on a solid surface: picks the dragged row's lift. */
+    overCover: Boolean,
     modifier: Modifier = Modifier,
     musicServiceHandler: MediaPlayerHandler = koinInject(),
     dataStoreManager: DataStoreManager = koinInject(),
@@ -309,6 +314,8 @@ internal fun QueueList(
         }
     val rows = dragDropState.arrange(entries)
     val currentKeys by rememberUpdatedState(keys)
+    // colors.content is the rows' text colour (white under force-dark), colors.container the sheet's.
+    val liftColor = if (overCover) translucentLift(colors.content) else tonalLift(colors.container, colors.content)
     // The row just tapped: it is already under the finger, so the list stays put for it.
     var clicked by remember { mutableStateOf<String?>(null) }
 
@@ -424,6 +431,7 @@ internal fun QueueList(
                         dragDropState = dragDropState,
                         key = entry.key,
                         lazy = lazy,
+                        liftColor = liftColor,
                         canRemove = canEdit && i != current,
                         movable = movable,
                         onMoveUp = if (movable && i - 1 > current) ({ musicServiceHandler.moveInQueue(i, i - 1) }) else null,
@@ -602,6 +610,7 @@ private fun LazyItemScope.QueueRow(
     dragDropState: DragDropState,
     key: String,
     lazy: Int,
+    liftColor: Color,
     /** A leftward swipe may take it off the queue: false for the playing row and for a guest. */
     canRemove: Boolean,
     /** Shows the drag handle: an upcoming row, and not for a guest. */
@@ -613,7 +622,13 @@ private fun LazyItemScope.QueueRow(
     onMore: () -> Unit,
 ) {
     // Inset here rather than on the row, so the lifted card is inset and rounded like the row.
-    DraggableItem(dragDropState = dragDropState, index = lazy, key = key, modifier = Modifier.padding(horizontal = 8.dp)) {
+    DraggableItem(
+        dragDropState = dragDropState,
+        index = lazy,
+        key = key,
+        modifier = Modifier.padding(horizontal = 8.dp),
+        liftColor = liftColor,
+    ) {
         // The tint goes on a wrapper: the row applies the modifier it is given twice, so padding
         // and a background passed in there come out doubled, with strips down the sides.
         Box(

@@ -119,6 +119,7 @@ import com.simohypers.limusic.ui.component.SuggestItems
 import com.simohypers.limusic.ui.component.painterPlaylistThumbnail
 import com.simohypers.limusic.ui.component.pillSurface
 import com.simohypers.limusic.ui.component.rememberDragDropState
+import com.simohypers.limusic.ui.component.tonalLift
 import com.simohypers.limusic.ui.component.selection.TrackSelectionBar
 import com.simohypers.limusic.ui.component.selection.keyedRows
 import com.simohypers.limusic.ui.component.selection.rememberTrackSelection
@@ -608,6 +609,7 @@ fun LocalPlaylistScreen(
                     index + 1,
                     key = row.second.id,
                     modifier = Modifier,
+                    liftColor = tonalLift(background, MaterialTheme.colorScheme.onSurface),
                 ) {
                     content(Modifier)
                 }

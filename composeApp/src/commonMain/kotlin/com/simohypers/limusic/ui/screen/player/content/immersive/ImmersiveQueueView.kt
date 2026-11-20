@@ -58,6 +58,7 @@ import com.simohypers.limusic.ui.component.ReorderHandle
 import com.simohypers.limusic.ui.component.SongFullWidthItems
 import com.simohypers.limusic.ui.component.SwipeToRemoveQueueRow
 import com.simohypers.limusic.ui.component.rememberDragDropState
+import com.simohypers.limusic.ui.component.translucentLift
 import com.simohypers.limusic.ui.icon.Info
 import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.Repeat
@@ -232,6 +233,8 @@ internal fun ImmersiveQueueView(
                             index = localIndex,
                             key = rowKeys.getOrElse(queueIndex) { track.videoId },
                             modifier = Modifier,
+                            // A white veil, like the rows' white text: the blurred cover stays visible through it.
+                            liftColor = translucentLift(Color.White),
                         ) { _ ->
                             // A leftward swipe takes it off the queue, like the queue sheet's rows: these
                             // are all upcoming, so only a guest (or a reorder under way) can't.

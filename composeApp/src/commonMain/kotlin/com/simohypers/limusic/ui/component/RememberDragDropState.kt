@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.DefaultShadowColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -115,7 +117,8 @@ fun LazyItemScope.DraggableItem(
     index: Int,
     key: Any,
     modifier: Modifier,
-    liftColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    /** What the lifted row is drawn on: [tonalLift] on a solid background, [translucentLift] over the cover. */
+    liftColor: Color = tonalLift(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurface),
     content: @Composable ColumnScope.(isDragging: Boolean) -> Unit,
 ) {
     val dragging = key == dragDropState.draggingKey
@@ -123,6 +126,8 @@ fun LazyItemScope.DraggableItem(
     val liftState = animateFloatAsState(if (dragging) 1f else 0f, spring(stiffness = Spring.StiffnessMediumLow), label = "rowLift")
     val raised by remember { derivedStateOf { liftState.value > 0f } }
     val shape = rounded(8.dp)
+    // A see-through lift shows the shadow under it too: a fainter one keeps the cover's colours.
+    val shadowColor = if (liftColor.alpha < 1f) SOFT_SHADOW else DefaultShadowColor
     Column(
         modifier =
             Modifier
@@ -146,6 +151,8 @@ fun LazyItemScope.DraggableItem(
                     scaleX = 1f + LIFT_SCALE * lift
                     scaleY = 1f + LIFT_SCALE * lift
                     shadowElevation = LIFT_ELEVATION.toPx() * lift
+                    ambientShadowColor = shadowColor
+                    spotShadowColor = shadowColor
                     this.shape = shape
                     clip = false
                 }.drawBehind {
@@ -162,6 +169,22 @@ fun LazyItemScope.DraggableItem(
 
 private const val LIFT_SCALE = 0.03f
 private val LIFT_ELEVATION = 8.dp
+private val SOFT_SHADOW = Color.Black.copy(alpha = 0.35f)
+
+/**
+ * The lift for rows drawn over the cover or a blur: a veil in the rows' own [content] colour, so the
+ * cover still shows through and the row only reads as picked up.
+ */
+fun translucentLift(content: Color): Color = content.copy(alpha = 0.12f)
+
+/**
+ * The lift for rows on a solid [background]: that background a step towards the rows' [content]
+ * colour, as Material's tonal elevation does, so the hue stays the list's own.
+ */
+fun tonalLift(
+    background: Color,
+    content: Color,
+): Color = content.copy(alpha = 0.08f).compositeOver(background)
 
 /**
  * The handle at the end of a reorderable row. It starts the move as soon as it is touched, no long
