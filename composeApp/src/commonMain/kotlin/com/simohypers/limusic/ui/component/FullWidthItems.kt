@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.PaddingValues
@@ -139,9 +140,12 @@ fun SongFullWidthItems(
 ) {
     val contentColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (forceDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant
-    val maxOffset = 360f
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
+    // In dp so the swipe needs the same finger travel on every screen density.
+    val maxOffset = with(density) { 130.dp.toPx() }
+    // The detector outlives recompositions, so it reads the latest callback through this.
+    val currentOnAddToQueue by rememberUpdatedState(onAddToQueue)
     val songRepository: SongRepository = koinInject<SongRepository>()
     val downloadState by songRepository
         .getSongAsFlow(songEntity?.videoId ?: track?.videoId ?: "")
@@ -203,9 +207,9 @@ fun SongFullWidthItems(
                                 null
                             },
                     ).animateContentSize()
-                    // Keyed on selectionMode so the swipe detector is torn down when selection
-                    // starts — keyed on Unit it would keep running with the stale flag captured.
-                    .pointerInput(selectionMode) {
+                    // Keyed on every flag the body reads, so the swipe detector is torn down when
+                    // selection starts or the row starts playing, and comes back when it stops.
+                    .pointerInput(selectionMode, isPlaying, onAddToQueue != null) {
                         if (!isPlaying && onAddToQueue != null && !selectionMode) {
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { change, dragAmount ->
@@ -219,11 +223,18 @@ fun SongFullWidthItems(
                                     }
                                 },
                                 onDragEnd = {
-                                    if (offsetX.value == maxOffset) {
-                                        onAddToQueue(
+                                    // At or past the end, not only exactly on it: the last snapTo may still be in flight.
+                                    if (offsetX.value >= maxOffset) {
+                                        currentOnAddToQueue?.invoke(
                                             track?.videoId ?: songEntity?.videoId ?: "",
                                         )
                                     }
+                                    coroutineScope.launch {
+                                        offsetX.animateTo(0f)
+                                    }
+                                },
+                                // A cancelled swipe would otherwise leave the row shifted.
+                                onDragCancel = {
                                     coroutineScope.launch {
                                         offsetX.animateTo(0f)
                                     }
