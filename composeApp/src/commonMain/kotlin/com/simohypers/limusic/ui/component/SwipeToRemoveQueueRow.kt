@@ -29,8 +29,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.simohypers.limusic.domain.mediaservice.handler.MediaPlayerHandler
 import com.simohypers.limusic.ui.icon.Delete
@@ -101,13 +103,17 @@ internal fun SwipeToRemoveQueueRow(
 
     val strip = MaterialTheme.colorScheme.errorContainer
     val onStrip = MaterialTheme.colorScheme.onErrorContainer
+    // offsetX counts towards the start (negative) and .offset mirrors it in RTL; pointer x doesn't
+    // mirror, so the finger's movement is turned the same way round before it is used.
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Box(
         modifier
             // On the row's frame, not on the part that slides: positions measured on something
             // that moves with the finger would eat half of every drag.
-            .pointerInput(enabled, index, videoId) {
+            .pointerInput(enabled, index, videoId, rtl) {
                 if (!enabled) return@pointerInput
                 val flingVelocity = 800.dp.toPx()
+                val toStart = if (rtl) -1f else 1f
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     if (removing) return@awaitEachGesture
@@ -117,9 +123,9 @@ internal fun SwipeToRemoveQueueRow(
                             // Only towards the start, unless the row is already out and coming back,
                             // and only mostly sideways: a scroll that drifts is the list's.
                             val moved = change.position - down.position
-                            if ((over < 0f || target < 0f) && abs(moved.x) > abs(moved.y)) {
+                            if ((over * toStart < 0f || target < 0f) && abs(moved.x) > abs(moved.y)) {
                                 change.consume()
-                                target = (target + over).coerceIn(-size.width.toFloat(), 0f)
+                                target = (target + over * toStart).coerceIn(-size.width.toFloat(), 0f)
                             }
                         } ?: return@awaitEachGesture
                     val tracker = VelocityTracker()
@@ -135,7 +141,7 @@ internal fun SwipeToRemoveQueueRow(
                             break
                         }
                         tracker.addPosition(change.uptimeMillis, change.position)
-                        val dx = change.position.x - change.previousPosition.x
+                        val dx = (change.position.x - change.previousPosition.x) * toStart
                         event.changes.forEach { it.consume() }
                         if (dx != 0f) {
                             target = (target + dx).coerceIn(-size.width.toFloat(), 0f)
@@ -144,7 +150,7 @@ internal fun SwipeToRemoveQueueRow(
                         }
                     }
                     val width = size.width.toFloat()
-                    val velocity = tracker.calculateVelocity().x
+                    val velocity = tracker.calculateVelocity().x * toStart
                     val flung = abs(velocity) >= flingVelocity
                     val go = target < 0f && ((flung && velocity < 0f) || (!flung && target <= -width * REMOVE_FRACTION))
                     scope.launch {
