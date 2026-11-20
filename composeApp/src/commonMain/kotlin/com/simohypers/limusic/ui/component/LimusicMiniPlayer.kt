@@ -129,7 +129,8 @@ fun LimusicMiniPlayer(
                                     // Positive is a swipe towards the end side: right in LTR, left in RTL.
                                     val towardsEnd = if (isRtl) -offsetX.value else offsetX.value
                                     when {
-                                        towardsEnd > SWIPE_SKIP.toPx() -> sharedViewModel.onUIEvent(UIEvent.Previous)
+                                        // SkipToPrevious, not Previous: a swipe means the previous song, never a restart.
+                                        towardsEnd > SWIPE_SKIP.toPx() -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
                                         towardsEnd < -SWIPE_SKIP.toPx() -> sharedViewModel.onUIEvent(UIEvent.Next)
                                     }
                                     offsetX.animateTo(0f)
