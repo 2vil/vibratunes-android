@@ -120,6 +120,11 @@ fun RecentlyAddedList(
                                                 arrayListOf(item.toTrack()),
                                             )
                                         },
+                                        onPlayNext = {
+                                            sharedViewModel.playListNext(
+                                                arrayListOf(item.toTrack()),
+                                            )
+                                        },
                                     )
                                 }
 

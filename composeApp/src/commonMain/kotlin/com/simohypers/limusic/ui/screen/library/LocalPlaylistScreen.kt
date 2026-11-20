@@ -597,6 +597,16 @@ fun LocalPlaylistScreen(
                                 )
                             }
                         },
+                    onPlayNext =
+                        if (changingOrder) {
+                            null
+                        } else {
+                            {
+                                sharedViewModel.playListNext(
+                                    arrayListOf(item.toTrack()),
+                                )
+                            }
+                        },
                     selectionMode = selection.active,
                     isSelected = selection.has(rowKey(item.videoId)),
                     // No long press while reordering: that gesture already belongs to drag.
@@ -747,6 +757,7 @@ fun LocalPlaylistScreen(
                         onMoreClickListener = { onItemMoreClick(it) },
                         onClickListener = { onPlaylistItemClick(it) },
                         onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(song.toTrack())) },
+                        onPlayNext = { sharedViewModel.playListNext(arrayListOf(song.toTrack())) },
                         selectionMode = selection.active,
                         isSelected = selection.has(rowKey(song.videoId)),
                         onLongClick = { selection.start(rowKey(song.videoId), song.toTrack()) },
