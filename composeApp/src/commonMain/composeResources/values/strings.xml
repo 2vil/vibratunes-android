@@ -1039,7 +1039,7 @@
     <string name="switch_channel">Switch channel</string>
     <string name="sign_out">Sign out</string>
     <string name="remove_account">Remove account</string>
-    <string name="remove_account_title">Remove from Vibratunes??</string>
+    <string name="remove_account_title">Remove from Vibratunes?</string>
     <string name="remove_account_desc">%1$s is only removed from this list. The Google account itself is not affected, and you can sign in with it again whenever you like.</string>
     <string name="choose_channel">Choose a YouTube channel</string>
     <string name="choose_channel_desc">Library, likes and playlists will use this channel. You can switch again later.</string>
