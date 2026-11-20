@@ -2,11 +2,9 @@ package com.simohypers.limusic.ui.component
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -94,7 +92,6 @@ import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveFadeBe
 import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
 import com.simohypers.limusic.ui.theme.AppThemeContent
 import com.simohypers.limusic.ui.theme.typo
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -287,16 +284,31 @@ internal fun QueueList(
                 "row:${t.videoId}#$n"
             }
         }
+    // The lazy rows in order, the divider among them, so a dragged row can pass it like any other.
+    val entries =
+        remember(keys, view.autoplayFrom) {
+            buildList {
+                keys.forEachIndexed { i, key ->
+                    if (i == view.autoplayFrom) add(QueueEntry(AUTOPLAY_KEY, -1))
+                    add(QueueEntry(key, i))
+                }
+            }
+        }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = lazyIndex(current.coerceAtLeast(0)))
     val dragDropState =
-        rememberDragDropState(listState) { from, to ->
+        rememberDragDropState(
+            listState,
+            // Only over the upcoming rows: the playing track and the history stay put.
+            canMoveTo = { lazy -> canEdit && lazy > lazyIndex(current) && lazy <= entries.lastIndex },
+        ) { from, to ->
             // Back from list positions to queue positions; the divider counts as autoplay's first row.
             fun queueIndex(i: Int) = if (hasAutoplay && i > view.autoplayFrom) i - 1 else i
             val src = queueIndex(from)
             val dst = if (hasAutoplay && to == view.autoplayFrom && src < to) to - 1 else queueIndex(to)
             musicServiceHandler.moveInQueue(src, dst)
         }
-    var overscrollJob by remember { mutableStateOf<Job?>(null) }
+    val rows = dragDropState.arrange(entries)
+    val currentKeys by rememberUpdatedState(keys)
     // The row just tapped: it is already under the finger, so the list stays put for it.
     var clicked by remember { mutableStateOf<String?>(null) }
 
@@ -343,105 +355,97 @@ internal fun QueueList(
     val clear by animateDpAsState(if (away) headerHeight else 0.dp, label = "queueHeaderClear")
 
     Box(modifier) {
-        LazyColumn(
-            state = listState,
-            // The top padding matches the top fade, so the playing row it opens on is clear
-            // of it, with a faded glimpse of what played before above.
-            contentPadding = PaddingValues(top = TOP_FADE, bottom = 72.dp + bottomInset),
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .immersiveVerticalFadeEdges(topFade = 0.dp, bottomFade = BOTTOM_FADE)
-                    .immersiveFadeBetween(transparentAt = clear, opaqueAt = clear + TOP_FADE)
-                    .pointerInput(canEdit, current, hasAutoplay) {
-                        if (!canEdit) return@pointerInput
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { offset ->
-                                // Only upcoming rows move: the playing track and the history stay put.
-                                val hit =
-                                    listState.layoutInfo.visibleItemsInfo.firstOrNull {
-                                        offset.y.toInt() in it.offset..(it.offset + it.size)
-                                    }
-                                val key = hit?.key as? String
-                                val index = key?.let { keys.indexOf(it) } ?: -1
-                                if (index > current) dragDropState.onDragStart(offset)
-                            },
-                            onDrag = { change, offset ->
-                                change.consume()
-                                dragDropState.onDrag(offset = offset)
-                                if (overscrollJob?.isActive == true) return@detectDragGesturesAfterLongPress
-                                dragDropState
-                                    .checkForOverScroll()
-                                    .takeIf { it != 0f }
-                                    ?.let {
-                                        overscrollJob =
-                                            scope.launch {
-                                                dragDropState.state.animateScrollBy(it * 1.3f, tween(easing = FastOutLinearInEasing))
-                                            }
-                                    } ?: run { overscrollJob?.cancel() }
-                            },
-                            onDragEnd = {
-                                dragDropState.onDragInterrupted(true)
-                                overscrollJob?.cancel()
-                            },
-                            onDragCancel = {
-                                dragDropState.onDragInterrupted()
-                                overscrollJob?.cancel()
-                            },
-                        )
-                    },
+        QuickLongPressBox(
+            gesture =
+                // Not keyed on the playing index: a song ending mid-drag mustn't drop the row in hand.
+                Modifier.pointerInput(canEdit) {
+                    if (!canEdit) return@pointerInput
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            // Only songs, not the divider; canMoveTo keeps it to the upcoming ones.
+                            val key = dragDropState.itemAt(offset)?.key as? String
+                            if (key != null && key in currentKeys) dragDropState.onDragStart(offset)
+                        },
+                        onDrag = { change, offset ->
+                            change.consume()
+                            dragDropState.onDragAndScroll(offset)
+                        },
+                        onDragEnd = { dragDropState.onDragInterrupted(true) },
+                        onDragCancel = { dragDropState.onDragInterrupted() },
+                    )
+                },
+            modifier = Modifier.fillMaxSize(),
         ) {
-            if (items.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(Res.string.empty_queue),
-                        style = typo().bodyMedium,
-                        color = colors.subtitle,
-                        modifier = Modifier.padding(20.dp),
-                    )
-                }
-            }
-            itemsIndexed(items.take(view.autoplayFrom), key = { i, _ -> keys[i] }) { i, track ->
-                QueueRow(i, track, i == current, dragDropState, canRemove = canEdit && i != current, onRemove = {
-                    musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
-                }, onPlay = {
-                    clicked = keys[i]
-                    musicServiceHandler.playMediaItemInMediaSource(i)
-                }, onMore = { onMore(i, track) })
-            }
-            // Said once, where the list stops, rather than leaving it to look unfinished.
-            if (canEdit && items.isNotEmpty() && view.leftCount == 0 && !hasAutoplay && !autoplay && repeat == RepeatState.None) {
-                item(key = "ends") {
-                    Text(
-                        stringResource(Res.string.queue_ends),
-                        style = typo().bodySmall,
-                        color = colors.subtitle,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    )
-                }
-            }
-            if (hasAutoplay) {
-                item(key = "autoplay") {
-                    Column(Modifier.animateItem()) {
-                        HorizontalDivider(color = colors.handle.copy(alpha = 0.5f), modifier = Modifier.padding(top = 8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        ) {
-                            Icon(LimusicIcons.AllInclusive, contentDescription = null, tint = colors.subtitle, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(Res.string.endless_queue), style = typo().labelMedium, color = colors.subtitle)
-                        }
+            LazyColumn(
+                state = listState,
+                // The top padding matches the top fade, so the playing row it opens on is clear
+                // of it, with a faded glimpse of what played before above.
+                contentPadding = PaddingValues(top = TOP_FADE, bottom = 72.dp + bottomInset),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .immersiveVerticalFadeEdges(topFade = 0.dp, bottomFade = BOTTOM_FADE)
+                        .immersiveFadeBetween(transparentAt = clear, opaqueAt = clear + TOP_FADE),
+            ) {
+                if (items.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(Res.string.empty_queue),
+                            style = typo().bodyMedium,
+                            color = colors.subtitle,
+                            modifier = Modifier.padding(20.dp),
+                        )
                     }
                 }
-                itemsIndexed(items.drop(view.autoplayFrom), key = { j, _ -> keys[view.autoplayFrom + j] }) { j, track ->
-                    val i = view.autoplayFrom + j
-                    QueueRow(i, track, i == current, dragDropState, lazy = i + 1, canRemove = canEdit && i != current, onRemove = {
-                        musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
-                    }, onPlay = {
-                        clicked = keys[i]
-                        musicServiceHandler.playMediaItemInMediaSource(i)
-                    }, onMore = { onMore(i, track) })
+                // The songs and autoplay's divider in one run, so a row dragged past the divider
+                // stays the same item (and keeps the drag going in its handle).
+                itemsIndexed(rows, key = { _, entry -> entry.key }) { lazy, entry ->
+                    val i = entry.index
+                    val track = items.getOrNull(i)
+                    if (track == null) {
+                        Column(Modifier.animateItem()) {
+                            HorizontalDivider(color = colors.handle.copy(alpha = 0.5f), modifier = Modifier.padding(top = 8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            ) {
+                                Icon(LimusicIcons.AllInclusive, contentDescription = null, tint = colors.subtitle, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(Res.string.endless_queue), style = typo().labelMedium, color = colors.subtitle)
+                            }
+                        }
+                        return@itemsIndexed
+                    }
+                    val movable = canEdit && i > current
+                    QueueRow(
+                        index = i,
+                        track = track,
+                        playing = i == current,
+                        dragDropState = dragDropState,
+                        key = entry.key,
+                        lazy = lazy,
+                        canRemove = canEdit && i != current,
+                        movable = movable,
+                        onMoveUp = if (movable && i - 1 > current) ({ musicServiceHandler.moveInQueue(i, i - 1) }) else null,
+                        onMoveDown = if (movable && i + 1 < items.size) ({ musicServiceHandler.moveInQueue(i, i + 1) }) else null,
+                        onRemove = { musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId) },
+                        onPlay = {
+                            clicked = keys[i]
+                            musicServiceHandler.playMediaItemInMediaSource(i)
+                        },
+                        onMore = { onMore(i, track) },
+                    )
+                }
+                // Said once, where the list stops, rather than leaving it to look unfinished.
+                if (canEdit && items.isNotEmpty() && view.leftCount == 0 && !hasAutoplay && !autoplay && repeat == RepeatState.None) {
+                    item(key = "ends") {
+                        Text(
+                            stringResource(Res.string.queue_ends),
+                            style = typo().bodySmall,
+                            color = colors.subtitle,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        )
+                    }
                 }
             }
         }
@@ -483,6 +487,13 @@ internal fun QueueList(
 private val TOP_FADE = 24.dp
 private const val FOLLOW_SETTLE_MS = 64L
 private val BOTTOM_FADE = 64.dp
+private const val AUTOPLAY_KEY = "autoplay"
+
+/** A lazy row of the queue list: the song at queue position [index], or autoplay's divider (-1). */
+private data class QueueEntry(
+    val key: String,
+    val index: Int,
+)
 
 /** The song playing: cover, title and artist, then add to playlist (when given), like and its menu. */
 @Composable
@@ -589,20 +600,25 @@ private fun LazyItemScope.QueueRow(
     track: Track,
     playing: Boolean,
     dragDropState: DragDropState,
-    lazy: Int = index,
+    key: String,
+    lazy: Int,
     /** A leftward swipe may take it off the queue: false for the playing row and for a guest. */
     canRemove: Boolean,
+    /** Shows the drag handle: an upcoming row, and not for a guest. */
+    movable: Boolean,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
     onRemove: () -> Boolean,
     onPlay: () -> Unit,
     onMore: () -> Unit,
 ) {
-    DraggableItem(dragDropState = dragDropState, index = lazy, modifier = Modifier) {
+    // Inset here rather than on the row, so the lifted card is inset and rounded like the row.
+    DraggableItem(dragDropState = dragDropState, index = lazy, key = key, modifier = Modifier.padding(horizontal = 8.dp)) {
         // The tint goes on a wrapper: the row applies the modifier it is given twice, so padding
         // and a background passed in there come out doubled, with strips down the sides.
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
                 .clip(rounded(8.dp))
                 .then(if (playing) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier),
         ) {
@@ -619,6 +635,14 @@ private fun LazyItemScope.QueueRow(
                     onClickListener = { onPlay() },
                     onMoreClickListener = { onMore() },
                     modifier = Modifier.fillMaxWidth(),
+                    // The handle's 48dp brings its own room at the end.
+                    padding = PaddingValues(start = 23.dp, end = if (movable) 4.dp else 15.dp, top = 6.dp, bottom = 6.dp),
+                    trailingView =
+                        if (movable) {
+                            { ReorderHandle(dragDropState, index = lazy, onMoveUp = onMoveUp, onMoveDown = onMoveDown) }
+                        } else {
+                            null
+                        },
                 )
             }
         }

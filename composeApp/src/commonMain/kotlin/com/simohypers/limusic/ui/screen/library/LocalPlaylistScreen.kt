@@ -321,7 +321,8 @@ fun LocalPlaylistScreen(
     }
     val coroutineScope = rememberCoroutineScope()
     val dragDropState =
-        rememberDragDropState(lazyState) { from, to ->
+        // Tracks start at lazy index 1, under the header.
+        rememberDragDropState(lazyState, canMoveTo = { it in 1..(tracks?.size ?: 0) }) { from, to ->
             coroutineScope.launch {
                 Logger.d(TAG, "onMove from $from to $to")
                 viewModel.changeLocalPlaylistItemPosition(from - 1, to - 1)
@@ -577,7 +578,7 @@ fun LocalPlaylistScreen(
             }
         }
         // The row id stays with a song through a re-sort or a drag, so rows animate to their place.
-        itemsIndexed(tracks.orEmpty(), key = { _, row -> row.second.id }) { index, row ->
+        itemsIndexed(dragDropState.arrange(tracks.orEmpty(), base = 1), key = { _, row -> row.second.id }) { index, row ->
             val item = row.first
             val content = @Composable { mod: Modifier ->
                 SongFullWidthItems(
@@ -601,10 +602,12 @@ fun LocalPlaylistScreen(
                 )
             }
             if (changingOrder) {
+                // It places itself (animateItem included): one more here would animate it twice.
                 DraggableItem(
                     dragDropState,
                     index + 1,
-                    Modifier.animateItem(),
+                    key = row.second.id,
+                    modifier = Modifier,
                 ) {
                     content(Modifier)
                 }
