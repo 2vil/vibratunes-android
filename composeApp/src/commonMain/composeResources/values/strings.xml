@@ -924,6 +924,8 @@
     <string name="devices_wrong_code">That code is wrong or has expired.</string>
     <string name="devices_unsupported">This server doesn't support linking yet.</string>
     <string name="devices_unreachable">Couldn't reach the server.</string>
+    <string name="devices_scan_qr">Scan the QR code</string>
+    <string name="devices_scan_hint">Point the camera at the QR code shown on your computer</string>
     <string name="devices_linked">Linked</string>
     <string name="devices_online">Online</string>
     <string name="devices_offline">Offline</string>

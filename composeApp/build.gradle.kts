@@ -62,6 +62,13 @@ kotlin {
             // no external app; the user imports a .conf like on the desktop.
             implementation("com.wireguard.android:tunnel:1.0.20260102")
 
+            // Device-link QR scanner: CameraX for the preview + ZXing core for the decode
+            // (pure JVM, no Play Services — QR only, so the bundled ML Kit would be dead weight).
+            implementation("androidx.camera:camera-camera2:1.4.2")
+            implementation("androidx.camera:camera-lifecycle:1.4.2")
+            implementation("androidx.camera:camera-view:1.4.2")
+            implementation("com.google.zxing:core:3.5.3")
+
             implementation(libs.jetbrains.ui.tooling.preview)
             implementation(libs.constraintlayout.compose)
 

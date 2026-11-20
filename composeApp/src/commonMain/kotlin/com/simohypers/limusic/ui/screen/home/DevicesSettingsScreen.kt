@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.simohypers.limusic.domain.data.model.listentogether.DeviceLink
+import com.simohypers.limusic.expect.ui.rememberQrScannerLauncher
 import com.simohypers.limusic.domain.data.model.listentogether.LinkConnection
 import com.simohypers.limusic.domain.data.model.listentogether.LinkedDevice
 import com.simohypers.limusic.domain.data.model.listentogether.PairResult
@@ -57,6 +59,7 @@ import com.simohypers.limusic.ui.component.codeOf
 import com.simohypers.limusic.ui.icon.Computer
 import com.simohypers.limusic.ui.icon.MoreVert
 import com.simohypers.limusic.ui.icon.LimusicIcons
+import com.simohypers.limusic.ui.icon.QrCodeScanner
 import com.simohypers.limusic.ui.icon.Smartphone
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.DeviceLinkViewModel
@@ -72,6 +75,7 @@ import limusic.composeapp.generated.resources.devices_offline
 import limusic.composeapp.generated.resources.devices_online
 import limusic.composeapp.generated.resources.devices_paused
 import limusic.composeapp.generated.resources.devices_play_here
+import limusic.composeapp.generated.resources.devices_scan_qr
 import limusic.composeapp.generated.resources.devices_play_on_computer
 import limusic.composeapp.generated.resources.devices_playing
 import limusic.composeapp.generated.resources.devices_playing_here
@@ -200,6 +204,21 @@ private fun Pairing(viewModel: DeviceLinkViewModel) {
                 modifier = Modifier.fillMaxWidth().height(48.dp),
             ) {
                 Text(stringResource(if (pairing) Res.string.devices_connecting else Res.string.devices_link), color = LocalContentColor.current)
+            }
+            val scanQr =
+                rememberQrScannerLauncher { text ->
+                    // The QR carries the whole invite (`CODE` or `CODE@host`): scanning pairs in
+                    // one gesture, no typing.
+                    if (!text.isNullOrBlank()) viewModel.pair(text)
+                }
+            OutlinedButton(
+                onClick = { scanQr.launch() },
+                enabled = !pairing,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) {
+                Icon(LimusicIcons.QrCodeScanner, contentDescription = null, Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(Res.string.devices_scan_qr), color = LocalContentColor.current)
             }
         }
     }

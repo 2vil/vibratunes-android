@@ -903,6 +903,8 @@
     <string name="devices_wrong_code">Ce code est erroné ou a expiré.</string>
     <string name="devices_unsupported">Ce serveur ne gère pas encore l'association.</string>
     <string name="devices_unreachable">Impossible de joindre le serveur.</string>
+    <string name="devices_scan_qr">Scanner le QR code</string>
+    <string name="devices_scan_hint">Visez le QR code affiché sur votre ordinateur avec l'appareil photo</string>
     <string name="devices_linked">Associé</string>
     <string name="devices_online">En ligne</string>
     <string name="devices_offline">Hors ligne</string>
