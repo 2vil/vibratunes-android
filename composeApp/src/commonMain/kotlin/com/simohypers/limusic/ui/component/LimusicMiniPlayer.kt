@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -67,11 +68,20 @@ import com.simohypers.limusic.ui.screen.player.deriveOrderIndex
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.SharedViewModel
 import com.simohypers.limusic.viewModel.UIEvent
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import org.koin.compose.koinInject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 
 private const val TAG = "LimusicMiniPlayer"
+
+/** How long a swipe's seek may take to move the player before the bar gives up and slides back. */
+private const val SEEK_LANDING_TIMEOUT_MS = 3_000L
+
+/** Below this the pager counts as resting on a page rather than parked between two. */
+private const val PAGE_OFFSET_EPSILON = 0.01f
 
 /** How far an upward drag has to travel before it opens the full player. */
 private val SWIPE_UP = 22.dp
@@ -117,19 +127,35 @@ fun LimusicMiniPlayer(
         )
     var isAnimatingFromPlayer by remember { mutableStateOf(false) }
     var isUserDraggingActive by remember { mutableStateOf(false) }
-    // A real drag waiting to become a seek. settledPage also moves on first composition and on our
-    // own scrolls, and treating such a page as a swipe would re-seek to a stale track.
+    // The user moved the pager and hasn't been answered yet. Set when a drag starts, cleared once a seek
+    // is sent for where it ended, or when it ended back on the page it started from.
     var pendingUserSwipe by remember { mutableStateOf(false) }
+    var dragStartPage by remember { mutableIntStateOf(-1) }
+    // The order index a seek was sent from, while it hasn't landed. Until the index moves off it, a
+    // second Next or SkipToPrevious would be worked out from a stale position, so new swipes wait.
+    var seekFrom by remember { mutableStateOf<Int?>(null) }
     val latestOrderIndex by rememberUpdatedState(currentOrderIndex)
     val latestQueueSize by rememberUpdatedState(queue.size)
 
-    // isScrollInProgress is true for our own animateScrollToPage too; isAnimatingFromPlayer tells them apart.
+    // isScrollInProgress is true for our own scrolls too; isAnimatingFromPlayer tells them apart.
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.isScrollInProgress to isAnimatingFromPlayer }
             .collect { (scrolling, animating) ->
                 isUserDraggingActive = scrolling && !animating
-                if (isUserDraggingActive) pendingUserSwipe = true
+                if (isUserDraggingActive && !pendingUserSwipe) {
+                    pendingUserSwipe = true
+                    dragStartPage = pagerState.settledPage
+                }
             }
+    }
+
+    // A seek that never moves the player (nothing there, a failed load) must not hold the pager off
+    // the playing song for good: give it up, and the reconciler below slides back.
+    LaunchedEffect(seekFrom) {
+        if (seekFrom != null) {
+            delay(SEEK_LANDING_TIMEOUT_MS)
+            seekFrom = null
+        }
     }
 
     // Same track, new index (a shuffle, a trimmed radio history): jump in this very frame, so the
@@ -139,6 +165,7 @@ fun LimusicMiniPlayer(
     val lastOrderIndex = remember { intArrayOf(currentOrderIndex) }
     val jumpTarget = currentOrderIndex
     if (!isUserDraggingActive &&
+        seekFrom == null &&
         jumpTarget in queue.indices &&
         jumpTarget != pagerState.currentPage &&
         jumpTarget != lastOrderIndex[0] &&
@@ -155,63 +182,83 @@ fun LimusicMiniPlayer(
         lastOrderIndex[0] = jumpTarget
     }
 
-    // Player → pager: the track changed elsewhere (buttons, notification, full player). Keyed on the
-    // index alone; a changing key would cancel a slide in flight and park the pager between pages.
-    LaunchedEffect(currentOrderIndex) {
-        val target = currentOrderIndex
-        if (!isUserDraggingActive && target in queue.indices && target != pagerState.currentPage) {
-            // A drag that sprang back never moved settledPage, so its latch is still up; drop it, or
-            // the page this scroll settles on (often a frame after the flag below is cleared) seeks.
-            pendingUserSwipe = false
-            isAnimatingFromPlayer = true
-            try {
-                // Slide to a neighbour; a far jump is not worth flinging through every cover between.
-                if (abs(target - pagerState.currentPage) <= 1) {
-                    pagerState.animateScrollToPage(target)
-                } else {
-                    pagerState.scrollToPage(target)
-                }
-                // A bar that is not laid out has nothing to slide through; a snap still holds.
-                if (pagerState.currentPage != target) pagerState.scrollToPage(target)
-            } finally {
-                isAnimatingFromPlayer = false
-            }
-        }
-    }
-
-    // Pager → player: seek when a swipe settles on another page. Keyed on the pager alone, the index
-    // read through rememberUpdatedState: re-keying on the track would build a new flow whose first
-    // emission is the stale settledPage, dispatched as though it had just been swiped to.
+    // One reconciler for both directions. Whenever the pager is idle and off the playing song, either
+    // the user put it there (send exactly one seek, once any earlier one has landed) or they didn't
+    // (slide back). Re-run on every change of what it reads, not once per track change: a one-shot
+    // sync gave up when a track change landed mid-drag, a settledPage flow swallowed a return to the
+    // page it last reported, and a Next worked out from a stale index undid an earlier seek, each
+    // leaving the bar on one song while another played.
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }
-            .distinctUntilChanged()
-            .collect { settled ->
-                if (isAnimatingFromPlayer || !pendingUserSwipe) return@collect
-                pendingUserSwipe = false
-                val orderIndex = latestOrderIndex
-                if (settled !in 0 until latestQueueSize || settled == orderIndex) return@collect
-                runCatching {
-                    when (val action = computeSeekAction(settled, orderIndex)) {
-                        ArtworkSeekAction.Next -> sharedViewModel.onUIEvent(UIEvent.Next)
-                        // SkipToPrevious, not Previous: a swipe means the previous song, never a restart.
-                        ArtworkSeekAction.Previous -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
-                        is ArtworkSeekAction.Skip -> mediaPlayerHandler.playMediaItemInMediaSource(action.index)
-                        ArtworkSeekAction.NoOp -> Unit
+        snapshotFlow {
+            listOf(
+                pagerState.isScrollInProgress,
+                isAnimatingFromPlayer,
+                pagerState.currentPage,
+                abs(pagerState.currentPageOffsetFraction) > PAGE_OFFSET_EPSILON,
+                latestOrderIndex,
+                latestQueueSize,
+                pendingUserSwipe,
+                seekFrom,
+            )
+        }.collect {
+            if (pagerState.isScrollInProgress || isAnimatingFromPlayer) return@collect
+            val orderIndex = latestOrderIndex
+            if (orderIndex !in 0 until latestQueueSize) return@collect
+            val page = pagerState.currentPage
+            val parked = abs(pagerState.currentPageOffsetFraction) > PAGE_OFFSET_EPSILON
+            if (seekFrom != null && seekFrom != orderIndex) seekFrom = null
+            val seekInFlight = seekFrom != null
+            // Ended where it started: nothing was chosen, so nothing is owed.
+            if (pendingUserSwipe && page == dragStartPage && !parked) pendingUserSwipe = false
+            if (page == orderIndex && !parked) {
+                // On the playing song. A swipe made while a seek is landing stays owed until it has.
+                if (!seekInFlight) pendingUserSwipe = false
+                return@collect
+            }
+            // Off the playing song. Wait for a seek still landing; it moves the index and re-runs this.
+            if (seekInFlight) return@collect
+            when {
+                pendingUserSwipe && !parked -> {
+                    pendingUserSwipe = false
+                    seekFrom = orderIndex
+                    runCatching {
+                        when (val action = computeSeekAction(page, orderIndex)) {
+                            ArtworkSeekAction.Next -> sharedViewModel.onUIEvent(UIEvent.Next)
+                            // SkipToPrevious, not Previous: a swipe means the previous song, never a restart.
+                            ArtworkSeekAction.Previous -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
+                            is ArtworkSeekAction.Skip -> mediaPlayerHandler.playMediaItemInMediaSource(action.index)
+                            ArtworkSeekAction.NoOp -> Unit
+                        }
+                    }.onFailure { error ->
+                        seekFrom = null
+                        Logger.w(TAG, "Mini player seek failed: ${error.message}")
                     }
-                }.onFailure { error -> Logger.w(TAG, "Mini player seek failed: ${error.message}") }
+                }
+                else -> {
+                    // Not the user's page (a track change from elsewhere, a seek that never landed), or
+                    // left between pages by a touch that stopped a slide: back onto the song that plays,
+                    // or, when the user had moved it, onto their nearest page so it can be sent above.
+                    val target = if (pendingUserSwipe) page else orderIndex
+                    isAnimatingFromPlayer = !pendingUserSwipe
+                    try {
+                        // Slide to a neighbour; a far jump is not worth flinging through every cover between.
+                        if (abs(target - page) <= 1) {
+                            pagerState.animateScrollToPage(target)
+                        } else {
+                            pagerState.scrollToPage(target)
+                        }
+                        // A bar that is not laid out has nothing to slide through; a snap still holds.
+                        if (pagerState.currentPage != target) pagerState.scrollToPage(target)
+                    } catch (e: CancellationException) {
+                        // A touch took the pager over; that drag is handled on its own. Only our own
+                        // cancellation ends this loop.
+                        currentCoroutineContext().ensureActive()
+                    } finally {
+                        isAnimatingFromPlayer = false
+                    }
+                }
             }
-    }
-
-    // The queue shrank under the current page: move back inside it, flagged as ours so it is no seek.
-    LaunchedEffect(queue.size) {
-        if (queue.isNotEmpty() && pagerState.currentPage >= queue.size) {
-            pendingUserSwipe = false
-            isAnimatingFromPlayer = true
-            try {
-                runCatching { pagerState.scrollToPage(queue.lastIndex) }
-            } finally {
-                isAnimatingFromPlayer = false
-            }
+            Unit
         }
     }
 
