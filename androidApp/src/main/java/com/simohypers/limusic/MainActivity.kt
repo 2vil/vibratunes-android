@@ -151,16 +151,13 @@ class MainActivity : AppCompatActivity() {
         // Check if the migration has already been done or not
         if (getString(FIRST_TIME_MIGRATION) != STATUS_DONE) {
             Logger.d("Locale Key", "onCreate: ${Locale.getDefault().toLanguageTag()}")
-            if (SUPPORTED_LANGUAGE.codes.contains(Locale.getDefault().toLanguageTag())) {
-                Logger.d(
-                    "Contains",
-                    "onCreate: ${
-                        SUPPORTED_LANGUAGE.codes.contains(
-                            Locale.getDefault().toLanguageTag(),
-                        )
-                    }",
-                )
-                putString(SELECTED_LANGUAGE, Locale.getDefault().toLanguageTag())
+            // Match by primary language, not the exact tag: a fr-CD phone must land on fr-FR.
+            val systemLanguage =
+                SUPPORTED_LANGUAGE.codes.firstOrNull {
+                    it.substringBefore('-') == Locale.getDefault().language
+                }
+            if (systemLanguage != null) {
+                putString(SELECTED_LANGUAGE, systemLanguage)
             } else {
                 putString(SELECTED_LANGUAGE, "en-US")
             }
