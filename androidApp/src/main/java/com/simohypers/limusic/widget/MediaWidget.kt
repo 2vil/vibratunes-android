@@ -610,7 +610,7 @@ private fun BadgedCover(
 }
 
 /**
- * The Limusic mark in one colour, the theme's text, the way Android draws the notification icon;
+ * The Vibratunes mark in one colour, the theme's text, the way Android draws the notification icon;
  * [chip] puts it on a surface circle so it reads over any cover.
  */
 @Composable
