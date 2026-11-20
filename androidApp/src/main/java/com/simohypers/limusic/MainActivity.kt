@@ -41,6 +41,7 @@ import com.simohypers.limusic.common.SELECTED_LANGUAGE
 import com.simohypers.limusic.common.STATUS_DONE
 import com.simohypers.limusic.common.SUPPORTED_LANGUAGE
 import com.simohypers.limusic.common.SUPPORTED_LOCATION
+import com.simohypers.limusic.expect.Tunnel
 import com.simohypers.limusic.domain.data.model.intent.GenericIntent
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.mediaservice.handler.MediaPlayerHandler
@@ -105,6 +106,13 @@ class MainActivity : AppCompatActivity() {
         if (shouldUnbind) {
             unbindService(serviceConnection)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Coming back from the VPN consent dialog (or anywhere else): retry a tunnel enable
+        // that was waiting, and re-sync the switch with what the backend actually runs.
+        Tunnel.onAppResumed()
     }
 
     override fun onNewIntent(intent: Intent) {

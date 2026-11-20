@@ -1051,4 +1051,15 @@
     <string name="sign_in_failed">Sign-in didn't complete. Try signing in again.</string>
     <string name="account_check_failed">Couldn't reach YouTube to check that account. Try again in a bit.</string>
     <string name="proxy_saved_restart_to_apply">Proxy saved, restart to apply</string>
+    <!-- Embedded WireGuard tunnel -->
+    <string name="tunnel_title">Embedded tunnel</string>
+    <string name="tunnel_description">Import a WireGuard .conf and route everything the app asks through it — the phone-side twin of the desktop's tunnel.</string>
+    <string name="tunnel_import">Import a .conf</string>
+    <string name="tunnel_none">No .conf imported</string>
+    <string name="tunnel_on">Up</string>
+    <string name="tunnel_off">Down</string>
+    <string name="tunnel_consent_needed">Android needs your approval to open the VPN. Approve the dialog and come back — the tunnel comes up on its own.</string>
+    <string name="tunnel_failed">Tunnel error: %1$s</string>
+    <string name="tunnel_remove">Remove the .conf</string>
+    <string name="tunnel_remove_hint">Stops the tunnel and forgets the file. Import it again to come back.</string>
 </resources>

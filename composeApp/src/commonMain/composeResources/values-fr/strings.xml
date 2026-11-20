@@ -1030,4 +1030,15 @@
     <string name="sign_in_failed">La connexion n'a pas abouti. Réessayez.</string>
     <string name="account_check_failed">Impossible de joindre YouTube pour vérifier ce compte. Réessayez dans un moment.</string>
     <string name="proxy_saved_restart_to_apply">Proxy enregistré, redémarrez pour appliquer</string>
+    <!-- Tunnel WireGuard embarqué -->
+    <string name="tunnel_title">Tunnel embarqué</string>
+    <string name="tunnel_description">Importez un .conf WireGuard et faites passer tout ce que l'app demande par lui — le jumeau téléphone du tunnel du bureau.</string>
+    <string name="tunnel_import">Importer un .conf</string>
+    <string name="tunnel_none">Aucun .conf importé</string>
+    <string name="tunnel_on">Actif</string>
+    <string name="tunnel_off">Inactif</string>
+    <string name="tunnel_consent_needed">Android demande votre approbation pour ouvrir le VPN. Approuvez la demande puis revenez — le tunnel montera tout seul.</string>
+    <string name="tunnel_failed">Erreur du tunnel : %1$s</string>
+    <string name="tunnel_remove">Retirer le .conf</string>
+    <string name="tunnel_remove_hint">Arrête le tunnel et oublie le fichier. Réimportez-le pour revenir.</string>
 </resources>

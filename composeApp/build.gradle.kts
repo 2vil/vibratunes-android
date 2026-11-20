@@ -58,6 +58,10 @@ kotlin {
             api(libs.koin.android)
             implementation(libs.koin.androidx.compose)
 
+            // Embedded WireGuard tunnel: the Go backend runs through a VpnService — no root,
+            // no external app; the user imports a .conf like on the desktop.
+            implementation("com.wireguard.android:tunnel:1.0.20260102")
+
             implementation(libs.jetbrains.ui.tooling.preview)
             implementation(libs.constraintlayout.compose)
 
