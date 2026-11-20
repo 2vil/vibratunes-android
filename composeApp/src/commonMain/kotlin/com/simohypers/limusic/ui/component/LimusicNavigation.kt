@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.navigation.NavController
@@ -80,12 +81,14 @@ fun NavController.navigateToTab(destination: Any) =
 /**
  * The bottom tabs. The tab you are in is the last tab on the back stack, so it stays lit on the
  * album or artist pages opened from it. Tapping it there goes back to the tab's root; tapping it on
- * the root calls [onReselect] (scroll to top or refresh).
+ * the root calls [onReselect] (scroll to top or refresh). [compact] is the "Compact navigation bar"
+ * setting: off, the bar keeps Material's own 80dp.
  */
 @Composable
 fun LimusicNavigationBar(
     navController: NavController,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     onReselect: (KClass<*>) -> Unit = {},
 ) {
     val backStack by navController.currentBackStack.collectAsState()
@@ -95,23 +98,10 @@ fun LimusicNavigationBar(
     val inSettings = backStack.indexOfLast { it.destination.hasRoute(SettingsDestination::class) } > tabEntry
     val currentTab = if (inSettings) -1 else stackTab
     val onTabRoot = backStack.lastOrNull()?.destination?.let(::limusicTabIndex) == currentTab
-    // Each item holds itself at M3's 80dp unless the bar's height caps it, so the bar gets a fixed
-    // height: 56dp, or more when a large font scale makes the label taller than 56dp leaves room for.
-    val labelStyle = typo().bodySmall
-    val labelSample = stringResource(Res.string.home)
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val labelHeight =
-        remember(textMeasurer, labelStyle, labelSample, density) {
-            with(density) { textMeasurer.measure(labelSample, labelStyle).size.height.toDp() }
-        }
-    val barHeight = max(LimusicNavigationBarHeight, ItemHeightWithoutLabel + labelHeight)
-    // NavigationBar pads itself by these insets, so its height has to include them.
-    val bottomInset = NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding()
     Column(modifier) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NavigationBar(
-            modifier = Modifier.height(barHeight + bottomInset),
+            modifier = if (compact) Modifier.height(compactBarHeight()) else Modifier,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
@@ -143,6 +133,26 @@ fun LimusicNavigationBar(
             }
         }
     }
+}
+
+/**
+ * Height for the compact bar, system navigation inset included. Each item holds itself at M3's 80dp
+ * unless the bar's height caps it, so the bar gets a fixed height: 56dp, or more when a large font
+ * scale makes the label taller than 56dp leaves room for.
+ */
+@Composable
+private fun compactBarHeight(): Dp {
+    val labelStyle = typo().bodySmall
+    val labelSample = stringResource(Res.string.home)
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelHeight =
+        remember(textMeasurer, labelStyle, labelSample, density) {
+            with(density) { textMeasurer.measure(labelSample, labelStyle).size.height.toDp() }
+        }
+    // NavigationBar pads itself by these insets, so its height has to include them.
+    val bottomInset = NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding()
+    return max(LimusicNavigationBarHeight, ItemHeightWithoutLabel + labelHeight) + bottomInset
 }
 
 // M3's 80dp bar is roomier than three tabs need. An item is ItemHeightWithoutLabel plus its

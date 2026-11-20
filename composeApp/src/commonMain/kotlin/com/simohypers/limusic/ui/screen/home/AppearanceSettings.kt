@@ -142,6 +142,8 @@ import limusic.composeapp.generated.resources.appearance_tint_palette
 import limusic.composeapp.generated.resources.appearance_your_fonts
 import limusic.composeapp.generated.resources.artwork_colors
 import limusic.composeapp.generated.resources.artwork_colors_description
+import limusic.composeapp.generated.resources.compact_nav_bar
+import limusic.composeapp.generated.resources.compact_nav_bar_info
 import limusic.composeapp.generated.resources.custom_color
 import limusic.composeapp.generated.resources.done
 import limusic.composeapp.generated.resources.now_playing_style_immersive
@@ -168,6 +170,7 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
     val look by sharedViewModel.appearance.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.themeMode.collectAsStateWithLifecycle()
     val artworkColors by sharedViewModel.artworkColors.collectAsStateWithLifecycle()
+    val compactNavBar by sharedViewModel.compactNavBar.collectAsStateWithLifecycle()
     val modeDark = isDarkTheme(themeMode)
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     // Which font row's sheet is open (and which row a loaded file goes to): BODY, HEADING or null.
@@ -288,6 +291,12 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
             smallSubtitle = true,
             navigates = true,
             onClick = { fontRow = HEADING },
+        )
+        SettingItem(
+            title = stringResource(Res.string.compact_nav_bar),
+            subtitle = stringResource(Res.string.compact_nav_bar_info),
+            smallSubtitle = true,
+            switch = (compactNavBar to { sharedViewModel.setCompactNavBar(it) }),
         )
     }
 

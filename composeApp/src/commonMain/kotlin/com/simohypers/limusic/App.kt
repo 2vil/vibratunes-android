@@ -117,6 +117,7 @@ fun App(
     val appearance by viewModel.appearance.collectAsStateWithLifecycle()
     val artworkColors by viewModel.artworkColors.collectAsStateWithLifecycle()
     val flatProgressBar by viewModel.flatProgressBar.collectAsStateWithLifecycle()
+    val compactNavBar by viewModel.compactNavBar.collectAsStateWithLifecycle()
     val artworkColor =
         rememberArtworkColor(
             url = nowPlayingData?.songEntity?.thumbnails ?: nowPlayingData?.mediaItem?.metadata?.artworkUri,
@@ -389,7 +390,7 @@ fun App(
                                     modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 6.dp),
                                 )
                             }
-                            LimusicNavigationBar(navController = navController) { klass ->
+                            LimusicNavigationBar(navController = navController, compact = compactNavBar) { klass ->
                                 viewModel.reloadDestination(klass)
                             }
                         }
