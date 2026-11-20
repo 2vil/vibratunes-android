@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
 import android.provider.OpenableColumns
+import androidx.activity.result.ActivityResultLauncher
+import com.simohypers.limusic.logger.Logger
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.Tunnel as WgTunnel
 import com.wireguard.config.Config
@@ -26,6 +28,8 @@ import java.io.StringReader
 actual object Tunnel {
     actual val available: Boolean = true
 
+    private const val TAG = "VibratunesTunnel"
+
     private val _status = MutableStateFlow(TunnelStatus())
     actual val status: StateFlow<TunnelStatus> = _status
 
@@ -40,6 +44,24 @@ actual object Tunnel {
 
     private val confFile get() = File(context().filesDir, "tunnel.conf")
     private val prefs get() = context().getSharedPreferences("tunnel", Context.MODE_PRIVATE)
+
+    /**
+     * The consent dialog MUST be started with startActivityForResult from a real Activity —
+     * ConfirmDialog reads getCallingPackage() and finishes instantly when there is none (which
+     * is exactly what a plain context.startActivity produces). MainActivity registers a
+     * StartActivityForResult launcher and hands it here.
+     */
+    private var consentLauncher: ActivityResultLauncher<Intent>? = null
+
+    fun setConsentLauncher(launcher: ActivityResultLauncher<Intent>?) {
+        consentLauncher = launcher
+    }
+
+    /** The consent dialog answered: bring the tunnel up if granted, else surface the hint. */
+    fun onConsentResult() {
+        if (!pendingUp) return
+        scope.launch { setEnabled(true, fromUi = false) }
+    }
 
     private val wgTunnel =
         object : WgTunnel {
@@ -61,6 +83,7 @@ actual object Tunnel {
     fun onAppResumed() {
         wantedUp = prefs.getBoolean("enabled", false)
         val name = prefs.getString("name", "").orEmpty()
+        Logger.i(TAG, "onAppResumed: wantedUp=$wantedUp confFile=${confFile.exists()} configSet=${config != null} backendSet=${backend != null}")
         if (!confFile.exists()) {
             config = null
             _status.value = TunnelStatus()
@@ -69,8 +92,9 @@ actual object Tunnel {
         if (config == null) {
             config =
                 try {
-                    Config.parse(confFile.bufferedReader())
+                    Config.parse(confFile.bufferedReader()).also { Logger.i(TAG, "stored conf parsed ok") }
                 } catch (e: Exception) {
+                    Logger.e(TAG, "stored conf parse failed: $e")
                     _status.update { it.copy(hasConf = true, confName = name, error = e.message ?: "parse") }
                     return
                 }
@@ -82,6 +106,7 @@ actual object Tunnel {
         val retry = pendingUp
         pendingUp = false
         if ((wantedUp || retry) && backend?.getState(wgTunnel) != WgTunnel.State.UP) {
+            Logger.i(TAG, "auto-restore launch (wantedUp=$wantedUp retry=$retry)")
             scope.launch { setEnabled(true, fromUi = false) }
         } else {
             syncOn()
@@ -136,12 +161,21 @@ actual object Tunnel {
 
     private suspend fun setEnabled(on: Boolean, fromUi: Boolean) =
         withContext(Dispatchers.IO) {
+            Logger.i(TAG, "setEnabled(on=$on fromUi=$fromUi) enter")
             turn.withLock {
                 val cfg = config ?: run {
+                    Logger.e(TAG, "setEnabled: no in-memory conf")
                     _status.update { it.copy(error = "no conf") }
                     return@withContext
                 }
-                val be = ensureBackend()
+                val be =
+                    try {
+                        ensureBackend()
+                    } catch (t: Throwable) {
+                        Logger.e(TAG, "backend init failed: $t")
+                        _status.update { it.copy(error = "$t") }
+                        return@withContext
+                    }
                 wantedUp = on
                 prefs.edit().putBoolean("enabled", on).apply()
                 if (!on) {
@@ -149,25 +183,39 @@ actual object Tunnel {
                         be.setState(wgTunnel, WgTunnel.State.DOWN, cfg)
                         _status.update { it.copy(on = false, needsConsent = false, error = "") }
                     } catch (e: Exception) {
+                        Logger.e(TAG, "down failed: $e")
                         _status.update { it.copy(error = e.message ?: "$e") }
                     }
                     return@withContext
                 }
                 val consent = VpnService.prepare(context())
+                Logger.i(TAG, "prepare -> ${if (consent == null) "granted" else "dialog needed"}")
                 if (consent != null) {
                     // Only a user tap may raise the system dialog; a silent restart waits for
                     // the next resume instead.
                     if (fromUi) {
                         pendingUp = true
                         _status.update { it.copy(needsConsent = true, error = "") }
-                        context().startActivity(consent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        val launcher = consentLauncher
+                        if (launcher != null) {
+                            try {
+                                launcher.launch(consent)
+                                Logger.i(TAG, "consent dialog launched via result launcher")
+                            } catch (t: Throwable) {
+                                Logger.e(TAG, "dialog launch failed: $t")
+                            }
+                        } else {
+                            Logger.w(TAG, "no consent launcher registered — cannot ask")
+                        }
                     }
                     return@withContext
                 }
                 try {
                     be.setState(wgTunnel, WgTunnel.State.UP, cfg)
+                    Logger.i(TAG, "tunnel UP")
                     _status.update { it.copy(on = true, needsConsent = false, error = "") }
                 } catch (e: Exception) {
+                    Logger.e(TAG, "up failed: $e")
                     _status.update { it.copy(error = e.message ?: "$e") }
                 }
             }
