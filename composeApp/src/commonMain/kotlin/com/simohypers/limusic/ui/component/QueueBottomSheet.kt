@@ -397,7 +397,9 @@ internal fun QueueList(
                 }
             }
             itemsIndexed(items.take(view.autoplayFrom), key = { i, _ -> keys[i] }) { i, track ->
-                QueueRow(i, track, i == current, dragDropState, onPlay = {
+                QueueRow(i, track, i == current, dragDropState, canRemove = canEdit && i != current, onRemove = {
+                    musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
+                }, onPlay = {
                     clicked = keys[i]
                     musicServiceHandler.playMediaItemInMediaSource(i)
                 }, onMore = { onMore(i, track) })
@@ -429,7 +431,9 @@ internal fun QueueList(
                 }
                 itemsIndexed(items.drop(view.autoplayFrom), key = { j, _ -> keys[view.autoplayFrom + j] }) { j, track ->
                     val i = view.autoplayFrom + j
-                    QueueRow(i, track, i == current, dragDropState, lazy = i + 1, onPlay = {
+                    QueueRow(i, track, i == current, dragDropState, lazy = i + 1, canRemove = canEdit && i != current, onRemove = {
+                        musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
+                    }, onPlay = {
                         clicked = keys[i]
                         musicServiceHandler.playMediaItemInMediaSource(i)
                     }, onMore = { onMore(i, track) })
@@ -580,6 +584,9 @@ private fun LazyItemScope.QueueRow(
     playing: Boolean,
     dragDropState: DragDropState,
     lazy: Int = index,
+    /** A leftward swipe may take it off the queue: false for the playing row and for a guest. */
+    canRemove: Boolean,
+    onRemove: () -> Boolean,
     onPlay: () -> Unit,
     onMore: () -> Unit,
 ) {
@@ -593,13 +600,21 @@ private fun LazyItemScope.QueueRow(
                 .clip(rounded(8.dp))
                 .then(if (playing) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier),
         ) {
-            SongFullWidthItems(
-                track = track,
-                isPlaying = playing,
-                onClickListener = { onPlay() },
-                onMoreClickListener = { onMore() },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // No swiping while a long-press drag reorders: a diagonal drag would otherwise do both.
+            SwipeToRemoveQueueRow(
+                index = index,
+                videoId = track.videoId,
+                enabled = canRemove && dragDropState.currentIndexOfDraggedItem == null,
+                onRemove = onRemove,
+            ) {
+                SongFullWidthItems(
+                    track = track,
+                    isPlaying = playing,
+                    onClickListener = { onPlay() },
+                    onMoreClickListener = { onMore() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

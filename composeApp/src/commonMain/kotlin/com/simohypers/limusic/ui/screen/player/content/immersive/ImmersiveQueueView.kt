@@ -59,6 +59,7 @@ import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
 import com.simohypers.limusic.expect.ui.DeviceVolumeController
 import com.simohypers.limusic.ui.component.DraggableItem
 import com.simohypers.limusic.ui.component.SongFullWidthItems
+import com.simohypers.limusic.ui.component.SwipeToRemoveQueueRow
 import com.simohypers.limusic.ui.component.rememberDragDropState
 import com.simohypers.limusic.ui.icon.Info
 import com.simohypers.limusic.ui.icon.PlaylistAdd
@@ -191,6 +192,8 @@ internal fun ImmersiveQueueView(
         }
 
         var overscrollJob by remember { mutableStateOf<Job?>(null) }
+        // A Listen Together guest follows the host's queue and can't take songs out of it.
+        val canEdit = !musicServiceHandler.followingRoom
 
         Box(
             modifier =
@@ -256,20 +259,29 @@ internal fun ImmersiveQueueView(
                         index = localIndex,
                         modifier = Modifier,
                     ) { _ ->
-                        // Owner's call: the OLD queue sheet's row component, verbatim — no bespoke
-                        // row. Long-press-drag reorders (list-level gesture above); ⋯ opens the
-                        // full song sheet with the queue's own rows, hosted by the player screen.
-                        SongFullWidthItems(
-                            track = track,
-                            isPlaying = false,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClickListener = { videoId ->
-                                if (videoId == track.videoId) actions.onSeekToQueueIndex(queueIndex)
-                            },
-                            onMoreClickListener = {
-                                actions.onQueueItemMore(queueIndex, track)
-                            },
-                        )
+                        // A leftward swipe takes it off the queue, like the queue sheet's rows: these
+                        // are all upcoming, so only a guest (or a reorder under way) can't.
+                        SwipeToRemoveQueueRow(
+                            index = queueIndex,
+                            videoId = track.videoId,
+                            enabled = canEdit && dragDropState.currentIndexOfDraggedItem == null,
+                            onRemove = { actions.onRemoveQueueItem(queueIndex, track.videoId) },
+                        ) {
+                            // Owner's call: the OLD queue sheet's row component, verbatim — no bespoke
+                            // row. Long-press-drag reorders (list-level gesture above); ⋯ opens the
+                            // full song sheet with the queue's own rows, hosted by the player screen.
+                            SongFullWidthItems(
+                                track = track,
+                                isPlaying = false,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClickListener = { videoId ->
+                                    if (videoId == track.videoId) actions.onSeekToQueueIndex(queueIndex)
+                                },
+                                onMoreClickListener = {
+                                    actions.onQueueItemMore(queueIndex, track)
+                                },
+                            )
+                        }
                     }
                 }
             }

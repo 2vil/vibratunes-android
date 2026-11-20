@@ -64,6 +64,7 @@ import com.simohypers.limusic.domain.utils.toSongEntity
 import com.simohypers.limusic.ui.component.NowPlayingBottomSheet
 import com.simohypers.limusic.ui.component.QueueBottomSheet
 import com.simohypers.limusic.ui.component.QueuePosition
+import com.simohypers.limusic.ui.component.removeFromQueueIfStillThere
 import com.simohypers.limusic.ui.icon.KeyboardArrowDown
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.navigation.destination.home.ListenTogetherDestination
@@ -662,8 +663,8 @@ fun NowPlayingScreenContent(
             onDismiss = onDismiss,
             onToolbarVisibilityChange = { shouldShowToolbar = it },
             onMoveQueueItem = { from, to -> mediaPlayerHandler.moveInQueue(from, to) },
-            onRemoveQueueItem = { index ->
-                mediaPlayerHandler.removeMediaItem(index)
+            onRemoveQueueItem = { index, videoId ->
+                mediaPlayerHandler.removeFromQueueIfStillThere(index, videoId)
             },
             onQueueItemMore = { index, track -> queueMoreFor = index to track },
             onSwitchVersion = {

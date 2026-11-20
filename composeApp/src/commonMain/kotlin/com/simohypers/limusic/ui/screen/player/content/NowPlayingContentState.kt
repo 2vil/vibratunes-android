@@ -166,8 +166,11 @@ class NowPlayingContentActions(
     val onToolbarVisibilityChange: (Boolean) -> Unit,
     /** Reorders the queue. `from`/`to` are absolute indices into [NowPlayingContentState.artworkQueue]. */
     val onMoveQueueItem: (from: Int, to: Int) -> Unit,
-    /** Removes one queue entry. `index` is an absolute index into [NowPlayingContentState.artworkQueue]. */
-    val onRemoveQueueItem: (index: Int) -> Unit,
+    /**
+     * Removes one queue entry. `index` is an absolute index into [NowPlayingContentState.artworkQueue];
+     * only if `videoId` is still the track there and it isn't the one playing. Returns whether it went.
+     */
+    val onRemoveQueueItem: (index: Int, videoId: String) -> Boolean,
     /** Opens the full song sheet for one queue entry; `index` is absolute, as above. */
     val onQueueItemMore: (index: Int, track: Track) -> Unit,
     /** Closes the player and opens Settings › Lyrics sources. */
