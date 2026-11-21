@@ -36,15 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
-import coil3.request.ImageRequest
-import com.materialkolor.ktx.themeColorOrNull
-import com.simohypers.limusic.expect.ui.toImageBitmap
-import com.simohypers.limusic.expect.ui.toReadableBitmap
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
@@ -82,6 +75,7 @@ import com.simohypers.limusic.ui.component.LimusicNavigationBar
 import com.simohypers.limusic.ui.component.navigateToTab
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreen
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreenContent
+import com.simohypers.limusic.ui.screen.player.content.coverColor
 import com.simohypers.limusic.ui.theme.AppTheme
 import com.simohypers.limusic.ui.theme.desktopPanelDark
 import com.simohypers.limusic.ui.theme.desktopWindowDark
@@ -592,26 +586,14 @@ private fun rememberArtworkColor(
             if (!enabled || sawTrack) color = null
         } else {
             sawTrack = true
-            val image =
-                SingletonImageLoader
-                    .get(context)
-                    .execute(ImageRequest.Builder(context).data(url).size(ARTWORK_SEED_PX).build())
-                    .image
-            // ponytail: decoded on the track change, not one track early as desktop does; prewarm the
-            // next cover if the colour visibly lands after the artwork.
-            color =
-                image?.let {
-                    withContext(Dispatchers.Default) {
-                        runCatching { it.toImageBitmap().toReadableBitmap(ARTWORK_SEED_PX, ARTWORK_SEED_PX).themeColorOrNull() }.getOrNull()
-                    }
-                }
+            // Decoded on the track change; the open player reads the covers around it ahead and
+            // blends them as they slide (rememberPagerCoverColor).
+            color = coverColor(context, url)
         }
         onColor(color)
     }
     return color.takeIf { enabled }
 }
-
-private const val ARTWORK_SEED_PX = 112
 
 // The tester's phone held upright (#13); its Classic player was checked at this width.
 private val PANEL_MIN_WIDTH = 384.dp

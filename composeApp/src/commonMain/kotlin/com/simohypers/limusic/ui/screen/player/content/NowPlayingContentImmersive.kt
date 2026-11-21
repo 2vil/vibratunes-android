@@ -122,7 +122,6 @@ import com.simohypers.limusic.viewModel.SharedViewModel
 import com.simohypers.limusic.viewModel.UIEvent
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
-import kotlin.math.floor
 import kotlin.math.pow
 
 /**
@@ -447,9 +446,7 @@ private fun ImmersiveMainView(
             }
         val pager = state.artworkPagerState
         // The page the pager is on or has just passed; the page after it is the one sliding in.
-        val lowerPage by remember(pager) {
-            derivedStateOf { floor(pager.currentPage + pager.currentPageOffsetFraction + PAGE_SETTLE_SLACK).toInt() }
-        }
+        val lowerPage by remember(pager) { derivedStateOf { pager.pageBelow() } }
         fun meshAt(page: Int): ImmersiveMesh? =
             (if (showsClip && page == state.currentOrderIndex) clipMesh else null) ?: pageMeshes[page]
         val mesh = if (meshPage) meshAt(lowerPage) else null
@@ -460,7 +457,7 @@ private fun ImmersiveMainView(
                 seam = meshSeam,
                 snapKey = lowerPage,
                 upcoming = meshAt(lowerPage + 1),
-                upcomingAlpha = { (pager.currentPage + pager.currentPageOffsetFraction - lowerPage).coerceIn(0f, 1f) },
+                upcomingAlpha = { pager.slidPast(lowerPage) },
             )
         }
 
@@ -1559,10 +1556,6 @@ private const val COVER_SHARP_UNTIL = 0.55f
 private const val COVER_SHARP_GONE = 0.85f
 private const val COVER_SOFT_UNTIL = 0.68f
 private const val COVER_SOFT_GONE = 0.94f
-
-// How close to a page the pager has to be to count as on it, so a settled pager's float error
-// never reads as having just left the page before.
-private const val PAGE_SETTLE_SLACK = 0.001f
 private const val COVER_HEAVY_UNTIL = 0.75f
 private const val COVER_BLEED_FRACTION = 0.35f
 private val COVER_SOFT_BLUR = 12.dp
