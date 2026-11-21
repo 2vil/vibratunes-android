@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -63,7 +64,6 @@ import org.koin.compose.koinInject
 import com.simohypers.limusic.viewModel.SharedViewModel
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -87,11 +87,9 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.materialkolor.PaletteStyle
-import com.materialkolor.ktx.themeColorOrNull
 import com.materialkolor.rememberDynamicColorScheme
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
 import com.simohypers.limusic.Platform
-import com.simohypers.limusic.expect.ui.toReadableBitmap
 import com.simohypers.limusic.extension.elapsedLabel
 import com.simohypers.limusic.extension.formatDuration
 import com.simohypers.limusic.extension.lengthLabel
@@ -122,9 +120,7 @@ import com.simohypers.limusic.ui.theme.LocalArtworkColors
 import com.simohypers.limusic.ui.theme.LocalIsDarkTheme
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.UIEvent
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import limusic.composeapp.generated.resources.Res
 import limusic.composeapp.generated.resources.audio_output
@@ -178,22 +174,14 @@ internal fun NowPlayingExpressiveTheme(
     // swatch, chosen for Classic's gradient, and on a light cover it is often a near-grey line whose
     // stray hue the Vibrant style below blows up into a colour the cover does not have (a pink
     // sleeve came out green). The app's accent, already the cover's, stands in until it resolves.
-    val artwork = state.screenData.bitmap
-    val artworkSeed by produceState<Color?>(initialValue = null, artwork) {
-        value =
-            artwork?.let { image ->
-                withContext(Dispatchers.Default) {
-                    runCatching { image.toReadableBitmap(SEED_SAMPLE_PX, SEED_SAMPLE_PX).themeColorOrNull() }.getOrNull()
-                }
-            }
-    }
-    val seedColor = artworkSeed ?: MaterialTheme.colorScheme.primary
-    // Track changes must GLIDE between palettes: the shell's startColor spring is quick, and a
-    // whole tonal scheme snapping at once reads as a flash. 800ms matches the palette crossfade
-    // feel of the other immersive screens.
+    // Read off the pager's covers, blended as they slide, so the page changes with the cover on a
+    // swipe or a skip instead of after the new cover has loaded.
+    val seedColor = rememberPagerCoverColor(state) ?: MaterialTheme.colorScheme.primary
+    // A slide is followed exactly. Anything else (a colour read late, a jump across the queue)
+    // GLIDES: a whole tonal scheme snapping at once reads as a flash.
     val animatedSeedColor by animateColorAsState(
         targetValue = seedColor,
-        animationSpec = tween(durationMillis = 800),
+        animationSpec = if (state.artworkPagerState.isScrollInProgress) snap() else tween(durationMillis = 800),
         label = "m3eSeedColor",
     )
     val derivedScheme =
@@ -211,9 +199,6 @@ internal fun NowPlayingExpressiveTheme(
 // Between the header and the title row on a short window, where the artwork card is left out.
 private val SHORT_GAP = 8.dp
 
-// The artwork is scored at this size: the seed depends on which colours cover the sleeve and how
-// strongly, which a full-resolution read would only make slower to find.
-private const val SEED_SAMPLE_PX = 112
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
