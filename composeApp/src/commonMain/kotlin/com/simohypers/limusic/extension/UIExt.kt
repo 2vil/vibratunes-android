@@ -361,7 +361,7 @@ fun NonLazyGrid(
 }
 
 /**
- * Apple Music's handover between two lyric lines: the page does not move as one block. The row
+ * The Immersive lyrics handover between two lyric lines: the page does not move as one block. The row
  * at the top of the page sets off first and every row below it a little after the one above it,
  * so the spacing opens as the page leaves and closes as it lands. The schedule is AMLL's
  * (`calcLayout` in packages/core/src/lyric-player/base/index.ts): nothing for the first row still
@@ -383,7 +383,7 @@ class LyricsStagger {
     //
     // A spring, not a tween. A tween covers a fixed distance in a fixed time, so a one-line step
     // and a six-line jump after a seek both take 650ms — the short one crawls, the long one races.
-    // A spring is driven by the distance itself, which is why Apple's page settles the same way
+    // A spring is driven by the distance itself, which is why the page settles the same way
     // whether it moved a little or a lot. Damping just under 1 keeps it soft without bouncing, and
     // low stiffness is what makes it read as gliding rather than snapping into place.
     private val spring =
@@ -467,7 +467,7 @@ class LyricsStagger {
 
 /**
  * Scrolls [index] to the TOP edge of the viewport, the counterpart to
- * [animateScrollAndCentralizeItem]. Used by the Apple Music lyrics style, which anchors the page
+ * [animateScrollAndCentralizeItem]. Used by the Immersive lyrics style, which anchors the page
  * near the top rather than around the middle.
  *
  * Gentler than the centralising version on purpose: that one repositions a list the user is
@@ -633,7 +633,7 @@ fun Palette?.getColorFromPalette(): Color {
 }
 
 /**
- * Apple-Music-style immersive page background derived from the artwork.
+ * Immersive page background derived from the artwork.
  * Uses the DOMINANT swatch (overall tone of the image, by pixel area) instead of a vivid Muted
  * swatch — so a light image yields a light-ish tone rather than a small saturated patch (e.g. a
  * bright portrait no longer turns brick-red from the hair/skin). Then darkens adaptively: the

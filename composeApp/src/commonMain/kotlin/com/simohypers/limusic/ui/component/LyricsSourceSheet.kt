@@ -743,7 +743,7 @@ internal fun NowPlayingScreenData.LyricsData.credit(): String? =
         sourceName()?.let { stringResource(Res.string.lyrics_from, it) }
     }
 
-/** The credit where the caption is a bare source name (Apple Music, the M3 lyrics card). */
+/** The credit where the caption is a bare source name (Immersive, the M3 lyrics card). */
 @Composable
 internal fun NowPlayingScreenData.LyricsData.creditName(): String =
     if (lyricsProvider == LyricsSource.LIMUSIC && authors.isNotEmpty()) stringResource(Res.string.lyrics_synced_by, names(authors)) else sourceName().orEmpty()

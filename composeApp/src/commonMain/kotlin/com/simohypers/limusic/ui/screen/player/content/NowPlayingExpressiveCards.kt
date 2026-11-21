@@ -526,7 +526,7 @@ internal fun ExpressiveArtworkCardPage(
         // Apple Music's animated artwork (current track) — Classic's Layer 3: edge to edge at the
         // top of the page under controls that never hide, covering the card once its still is up.
         if (pageAnimatedArtwork != null) {
-            AppleMusicAnimatedArtworkPage(
+            ImmersiveAnimatedArtworkPage(
                 canvas = pageAnimatedArtwork,
                 cover = state.screenData.bitmap,
                 topChrome = topAppBarHeightDp.dp,
@@ -588,7 +588,7 @@ internal fun ExpressiveBelowTheFold(
                         Spacer(modifier = Modifier.weight(1f))
                         // Vote button — only when the lyrics or the translation come from SimpMusic
                         // Lyrics. The rule itself lives on the shared contract (canVote), so a style
-                        // cannot ship without it the way the Apple Music tab did.
+                        // cannot ship without it the way the Immersive tab did.
                         if (state.screenData.lyricsData.canVote()) {
                             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                                 IconButton(

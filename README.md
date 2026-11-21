@@ -38,7 +38,7 @@ maxrave-dev and its contributors, cut down and rebuilt to work like the desktop 
 - **Synced lyrics**: word by word where the source has the timings, a source picker and timing nudge per song, providers in the order you choose
 - **Downloads**: tap a playlist or album and it's on the phone; download the whole library at once, keep it downloaded as it grows, Wi-Fi only if you like
 - **Music videos**: optional, the video plays instead of the cover
-- **Three player styles**: Limusic's Classic, Material 3 Expressive and Apple Music, with Apple Music's animated artwork where a song has it
+- **Three player styles**: Limusic's Classic, Material 3 Expressive and Immersive, with animated album covers where a song has them
 - **Colors from the cover**: the playing artwork tints the whole app
 - **Themes**: Default, Catppuccin, Caffeine, AMOLED, Neon and Material You, light or dark, with your own accent, fonts and corner roundness
 - **Sound**: loudness normalization, crossfade (beta), a ten-band equalizer, playback speed and pitch, and a sleep timer
@@ -72,7 +72,7 @@ maxrave-dev and its contributors, cut down and rebuilt to work like the desktop 
   <tr>
     <td align="center"><img src="assets/screenshots/player-classic-cover.webp" width="250" alt="The Classic player, colors from the cover"><br><sub>Classic</sub></td>
     <td align="center"><img src="assets/screenshots/player-expressive.webp" width="250" alt="The Material 3 Expressive player"><br><sub>Material 3 Expressive</sub></td>
-    <td align="center"><img src="assets/screenshots/player-apple-music.webp" width="250" alt="The Apple Music style player"><br><sub>Apple Music</sub></td>
+    <td align="center"><img src="assets/screenshots/player-immersive.webp" width="250" alt="The Immersive style player"><br><sub>Immersive</sub></td>
   </tr>
 </table>
 
