@@ -27,6 +27,7 @@ import com.simohypers.limusic.domain.data.player.GenericCommandButton
 import com.simohypers.limusic.domain.data.player.GenericMediaItem
 import com.simohypers.limusic.domain.data.player.GenericPlaybackParameters
 import com.simohypers.limusic.domain.data.player.GenericTracks
+import com.simohypers.limusic.domain.data.player.LiveStreamRegistry
 import com.simohypers.limusic.domain.data.player.PlayerConstants
 import com.simohypers.limusic.domain.data.player.PlaybackRefusals
 import com.simohypers.limusic.domain.data.player.PlayerError
@@ -56,6 +57,7 @@ import com.simohypers.limusic.domain.mediaservice.queue.insertQueued
 import com.simohypers.limusic.domain.mediaservice.queue.isMix
 import com.simohypers.limusic.domain.mediaservice.queue.move
 import com.simohypers.limusic.domain.mediaservice.queue.nextIndex
+import com.simohypers.limusic.domain.mediaservice.queue.prevIndex
 import com.simohypers.limusic.domain.mediaservice.queue.prevTrackTitle
 import com.simohypers.limusic.domain.mediaservice.queue.removeAt
 import com.simohypers.limusic.domain.mediaservice.queue.retainUpcoming
@@ -1292,18 +1294,24 @@ internal class MediaServiceHandlerImpl(
     }
 
     /**
-     * Previous: early in the first track of a queue that replaced another, go back to that one;
-     * otherwise the player's own rule (restart past 3 s, else the track before).
+     * Previous, desktop's prev_in_queue: past 3 s restart the song; early in the first track of a
+     * queue that replaced another, go back to that one; otherwise the track before.
+     *
+     * Moves q.current at once, as next() does. Handed to the player, the index moved only once the
+     * new track loaded, so a Next or a cover swipe made before that stepped from the old one: the
+     * cover stopped on one song and another played.
      */
     private fun previous(always: Boolean) {
         resetCrossfade()
-        if (q.current == 0 && q.prev != null && (always || player.currentPosition <= PREV_REWIND_MS)) {
-            restorePrev()
-        } else if (always) {
-            player.seekToPreviousMediaItem()
-        } else {
-            player.seekToPrevious()
+        val live = player.currentMediaItem?.mediaId?.let(LiveStreamRegistry::isLive) == true
+        if (!always && !live && player.currentPosition > PREV_REWIND_MS) {
+            player.seekTo(0)
+            return
         }
+        if (q.current == 0 && restorePrev()) return
+        val repeat = if (player.repeatMode == PlayerConstants.REPEAT_MODE_OFF) RepeatState.None else RepeatState.All
+        val i = prevIndex(q.items.size, q.current, repeat)
+        if (i != null) playIndex(i) else player.seekTo(0)
     }
 
     private fun restorePrev(): Boolean {

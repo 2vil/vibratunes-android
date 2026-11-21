@@ -568,6 +568,19 @@ fun nextIndex(
         else -> null
     }
 
+/** The index Previous steps back to: wraps on repeat-all only, like [nextIndex]. Null at the head. */
+fun prevIndex(
+    len: Int,
+    current: Int,
+    repeat: RepeatState,
+): Int? =
+    when {
+        len == 0 -> null
+        current > 0 -> current - 1
+        repeat == RepeatState.All -> len - 1
+        else -> null
+    }
+
 /**
  * Un-shuffle: the snapshot, the playing track found in it, and from what is still upcoming
  * everything the shuffle already played ([heard]). Manual adds go back where they belong: Play next

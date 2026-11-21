@@ -218,25 +218,45 @@ fun NowPlayingScreenContent(
         )
     var isAnimatingFromPlayer by remember { mutableStateOf(false) }
     var isUserDraggingActive by remember { mutableStateOf(false) }
-    // Whether a real finger-drag is waiting to be turned into a seek. See the latch below.
-    var pendingUserSwipe by remember { mutableStateOf(false) }
+    val latestQueueSize by rememberUpdatedState(artworkQueue.size)
 
-    // Drag detection — `isScrollInProgress` is `true` for both user drags (forwarded
-    // by the outer Modifier.scrollable on the Column) and programmatic
-    // `animateScrollToPage`. We disambiguate via `isAnimatingFromPlayer`, which we
-    // set explicitly around the player → pager animation (try/finally).
+    // ② Pager → Player: when a swipe comes to rest, play the page it rests on. `isScrollInProgress`
+    // is true for the user's drag and fling and for ①'s animateScrollToPage; `isAnimatingFromPlayer`,
+    // set around ①, tells them apart. Adjacent (±1) → Next/SkipToPrevious, which keep play or pause
+    // as it was; a far page → playMediaItemInMediaSource.
+    //
+    // On the swipe's END, not on each settledPage: a run of quick flicks keeps the scroll going from
+    // one to the next while settledPage still moves at every page, and a seek per settle, armed once
+    // per drag, took only the first. The cover went on to the page the flicks ended on and the
+    // player stayed songs behind.
+    //
+    // Only after a user scroll: a pager composed again (Immersive's Queue tab, where it is not
+    // composed at all) holds a stale settledPage, and taking that for a swipe sent the player back to
+    // the song that had just been playing.
+    //
+    // Against the player's index now, not this screen's, which hears of a track change only once the
+    // new song's row is read: from that, Next went a page past the cover.
     LaunchedEffect(artworkPagerState) {
         snapshotFlow {
             artworkPagerState.isScrollInProgress to isAnimatingFromPlayer
         }.collect { (scrolling, animating) ->
+            val wasSwiping = isUserDraggingActive
             isUserDraggingActive = scrolling && !animating
-            // Latched, and cleared only once a seek has been dispatched for it. settledPage can
-            // move for reasons that are NOT a swipe — the pager being composed for the first time,
-            // or re-composed after the Immersive style spent a while on its Queue/Lyrics tab,
-            // where the pager does not exist at all and its settledPage stays frozen on the track
-            // that was playing when the user left MAIN. Without this latch, coming back from that
-            // tab replays a stale page as though it had just been swiped to.
-            if (isUserDraggingActive) pendingUserSwipe = true
+            if (!wasSwiping || isUserDraggingActive) return@collect
+            val settled = artworkPagerState.settledPage
+            val orderIndex = mediaPlayerHandler.currentOrderIndex()
+            if (settled !in 0 until latestQueueSize || settled == orderIndex) return@collect
+            runCatching {
+                when (val action = computeSeekAction(settled, orderIndex)) {
+                    ArtworkSeekAction.Next -> sharedViewModel.onUIEvent(UIEvent.Next)
+                    // UIEvent.Previous would restart the song once it is past 3 seconds.
+                    ArtworkSeekAction.Previous -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
+                    is ArtworkSeekAction.Skip -> mediaPlayerHandler.playMediaItemInMediaSource(action.index)
+                    ArtworkSeekAction.NoOp -> Unit
+                }
+            }.onFailure { error ->
+                Logger.w(TAG, "ArtworkPager seek failed: ${error.message}")
+            }
         }
     }
 
@@ -301,66 +321,6 @@ fun NowPlayingScreenContent(
                 isAnimatingFromPlayer = false
             }
         }
-    }
-
-    // ② Pager → Player: seek when user settles on a different page.
-    // Adjacent (±1) → Next/Previous (preserves crossfade flow on Android).
-    // Far skip → playMediaItemInMediaSource (handles unshuffling internally).
-    //
-    // Keyed on artworkPagerState ALONE — deliberately NOT on currentOrderIndex/queue size, which
-    // are read through rememberUpdatedState instead. This effect exists to catch a user SWIPE, and
-    // the only thing that moves settledPage is the pager. Re-keying it on the track built a NEW
-    // snapshotFlow on every track change, and a new flow's FIRST emission is whatever settledPage
-    // happens to hold — distinctUntilChanged has no previous value to suppress it against — so a
-    // STALE page was dispatched as though the user had just swiped to it.
-    //
-    // That is what broke the Immersive queue: its pager lives inside MAIN, so while QUEUE is on
-    // screen the pager is not composed at all and settledPage still points at the previous track.
-    // Tapping a row seeked correctly, the track changed, this effect was rebuilt, and it
-    // immediately read the stale page — computeSeekAction(previous, current) == Previous — which
-    // sent the player straight back to the song that had just been playing.
-    // ImmersiveQueueView already uses rememberUpdatedState for exactly this hazard (its offset).
-    val latestOrderIndex by rememberUpdatedState(currentOrderIndex)
-    val latestQueueSize by rememberUpdatedState(artworkQueue.size)
-    LaunchedEffect(artworkPagerState) {
-        snapshotFlow { artworkPagerState.settledPage }
-            .distinctUntilChanged()
-            .collect { settled ->
-                if (isAnimatingFromPlayer) return@collect
-                // The seek is a response to a SWIPE, so there must have been one. This is what
-                // stops the Immersive queue from being overruled: tapping a row seeks correctly,
-                // the track changes, and then this effect would otherwise notice the pager sitting
-                // on the old page and "correct" it right back.
-                if (!pendingUserSwipe) return@collect
-                pendingUserSwipe = false
-                val queueSize = latestQueueSize
-                val orderIndex = latestOrderIndex
-                if (queueSize == 0) return@collect
-                if (settled !in 0 until queueSize) return@collect
-                if (settled == orderIndex) return@collect
-
-                runCatching {
-                    when (val action = computeSeekAction(settled, orderIndex)) {
-                        ArtworkSeekAction.Next -> {
-                            sharedViewModel.onUIEvent(UIEvent.Next)
-                        }
-                        // Use SkipToPrevious so a swipe always goes to the previous track —
-                        // UIEvent.Previous would seek to 0 of the current track once the
-                        // playhead has passed the 3-second mark.
-                        ArtworkSeekAction.Previous -> {
-                            sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
-                        }
-                        is ArtworkSeekAction.Skip -> {
-                            mediaPlayerHandler.playMediaItemInMediaSource(action.index)
-                        }
-                        ArtworkSeekAction.NoOp -> {
-                            Unit
-                        }
-                    }
-                }.onFailure { error ->
-                    Logger.w(TAG, "ArtworkPager seek failed: ${error.message}")
-                }
-            }
     }
 
     // ③ Queue mutation guard — when queue shrinks below currentPage, scroll to last index
