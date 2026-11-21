@@ -85,6 +85,7 @@ import com.simohypers.limusic.expect.ui.importFontFile
 import com.simohypers.limusic.expect.ui.isWallpaperDynamicColorSupported
 import com.simohypers.limusic.expect.ui.platformDynamicColorScheme
 import com.simohypers.limusic.ui.component.SettingGroup
+import com.simohypers.limusic.ui.component.Stepper
 import com.simohypers.limusic.ui.component.SettingItem
 import com.simohypers.limusic.ui.component.SettingSheet
 import com.simohypers.limusic.ui.icon.Add
@@ -129,6 +130,8 @@ import limusic.composeapp.generated.resources.appearance_font_load_hint
 import limusic.composeapp.generated.resources.appearance_font_remove
 import limusic.composeapp.generated.resources.appearance_font_theme
 import limusic.composeapp.generated.resources.appearance_interface
+import limusic.composeapp.generated.resources.appearance_zoom
+import limusic.composeapp.generated.resources.appearance_zoom_hint
 import limusic.composeapp.generated.resources.appearance_mode
 import limusic.composeapp.generated.resources.appearance_mode_amoled
 import limusic.composeapp.generated.resources.appearance_mode_hint
@@ -165,6 +168,11 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun AppearanceSettings(sharedViewModel: SharedViewModel) {
+    // The desktop zoom's levels, the same list minus nothing: parity over phone-sense, and the
+    // stepper walks it either way.
+    val zoomLevels = listOf(0.5f, 0.67f, 0.75f, 0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.5f, 1.75f)
+    val uiScale by sharedViewModel.uiScale.collectAsStateWithLifecycle()
+    val zoomIndex = zoomLevels.indexOf(uiScale).coerceAtLeast(0)
     val look by sharedViewModel.appearance.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.themeMode.collectAsStateWithLifecycle()
     val artworkColors by sharedViewModel.artworkColors.collectAsStateWithLifecycle()
@@ -288,6 +296,21 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
             smallSubtitle = true,
             navigates = true,
             onClick = { fontRow = HEADING },
+        )
+        SettingItem(
+            title = stringResource(Res.string.appearance_zoom),
+            subtitle = stringResource(Res.string.appearance_zoom_hint),
+            smallSubtitle = true,
+            otherView = {
+                Stepper(
+                    label = "${(uiScale * 100).roundToInt()}%",
+                    highlighted = uiScale != 1f,
+                    canDown = zoomIndex > 0,
+                    canUp = zoomIndex < zoomLevels.lastIndex,
+                    onDown = { sharedViewModel.setUiScale(zoomLevels[zoomIndex - 1]) },
+                    onUp = { sharedViewModel.setUiScale(zoomLevels[zoomIndex + 1]) },
+                )
+            },
         )
     }
 

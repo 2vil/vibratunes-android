@@ -33,7 +33,6 @@ import androidx.core.os.LocaleListCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.activity.result.ActivityResultLauncher
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.eygraber.uri.toKmpUriOrNull
@@ -42,7 +41,6 @@ import com.simohypers.limusic.common.SELECTED_LANGUAGE
 import com.simohypers.limusic.common.STATUS_DONE
 import com.simohypers.limusic.common.SUPPORTED_LANGUAGE
 import com.simohypers.limusic.common.SUPPORTED_LOCATION
-import com.simohypers.limusic.expect.Tunnel
 import com.simohypers.limusic.domain.data.model.intent.GenericIntent
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.mediaservice.handler.MediaPlayerHandler
@@ -74,7 +72,6 @@ class MainActivity : AppCompatActivity() {
     private val downloadHandler: DownloadHandler by inject()
     private val artistRepository: ArtistRepository by inject()
 
-    private lateinit var tunnelConsentLauncher: ActivityResultLauncher<Intent>
     private var mBound = false
     private var shouldUnbind = false
     private val serviceConnection =
@@ -108,13 +105,6 @@ class MainActivity : AppCompatActivity() {
         if (shouldUnbind) {
             unbindService(serviceConnection)
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Coming back from the VPN consent dialog (or anywhere else): retry a tunnel enable
-        // that was waiting, and re-sync the switch with what the backend actually runs.
-        Tunnel.onAppResumed()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -205,14 +195,6 @@ class MainActivity : AppCompatActivity() {
             putString(SELECTED_LANGUAGE, SUPPORTED_LANGUAGE.codes.first())
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(SUPPORTED_LANGUAGE.codes.first()))
         }
-
-        // The VPN consent dialog must be launched for-result from an Activity, or ConfirmDialog
-        // sees no calling package and finishes without ever drawing.
-        tunnelConsentLauncher =
-            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                Tunnel.onConsentResult()
-            }
-        Tunnel.setConsentLauncher(tunnelConsentLauncher)
 
         enableEdgeToEdge(
             navigationBarStyle =

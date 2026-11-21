@@ -1292,6 +1292,14 @@ class SharedViewModel(
 
     val flatProgressBar: StateFlow<Boolean> = dataStoreManager.getString(FLAT_PROGRESS_BAR).map { it == TRUE }.stateInStored()
 
+    /** Interface scale, the phone's zoom: multiplies the density the whole UI lays out through. */
+    val uiScale: StateFlow<Float> =
+        dataStoreManager.getString(UI_SCALE).map { it?.toFloatOrNull() ?: 1f }.stateInStored()
+
+    fun setUiScale(scale: Float) {
+        viewModelScope.launch { dataStoreManager.putString(UI_SCALE, scale.toString()) }
+    }
+
     fun setFlatProgressBar(on: Boolean) {
         viewModelScope.launch { dataStoreManager.putString(FLAT_PROGRESS_BAR, if (on) TRUE else "") }
     }
@@ -1531,3 +1539,4 @@ private fun String.isCanvasVideoUrl(): Boolean = contains(".mp4") || contains(".
 private const val NEW_PLAYLIST_WHERE = "new_playlist_where"
 private const val ARTWORK_COLOR = "artwork_color"
 private const val FLAT_PROGRESS_BAR = "flat_progress_bar"
+private const val UI_SCALE = "ui_scale"

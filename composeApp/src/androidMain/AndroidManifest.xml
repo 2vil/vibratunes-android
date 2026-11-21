@@ -1,18 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Merged into the app manifest: the VpnService the WireGuard Go backend starts and stops.
-     The system prompts for VPN consent on the first VpnService.prepare() call. -->
+<!-- Merged into the app manifest: the device-link QR scanner's camera screen. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- The device-link QR scanner: the only feature that uses the camera. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <application>
-        <service
-            android:name="com.wireguard.android.backend.GoBackend$VpnService"
-            android:exported="false"
-            android:permission="android.permission.BIND_VPN_SERVICE">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
         <activity
             android:name="com.simohypers.limusic.qr.QrScanActivity"
             android:exported="false"

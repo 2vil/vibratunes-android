@@ -20,7 +20,6 @@ import com.simohypers.limusic.common.Connectivity
 import com.simohypers.limusic.common.watchConnectivity
 import com.simohypers.limusic.ktorext.dropIdleConnections
 import com.simohypers.limusic.data.di.loader.loadAllModules
-import com.simohypers.limusic.expect.Tunnel
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.logger.Logger
 import com.simohypers.limusic.di.viewModelModule
@@ -98,9 +97,6 @@ class LimusicApplication :
         // After WorkManager: Glance runs each widget session as a work request.
         applicationScope.launch { followMediaWidget(this@LimusicApplication, get(), get()) }
 
-        // Restore the embedded tunnel's state (and bring it back up if it was on) — after
-        // startKoin, since the tunnel resolves the application context through Koin.
-        Tunnel.onAppResumed()
 
         // Initialize and start AutoBackupScheduler
         autoBackupScheduler = AutoBackupScheduler(this, dataStoreManager)

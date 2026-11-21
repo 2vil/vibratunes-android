@@ -97,7 +97,6 @@ import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.manager.DataStoreManager.Values.TRUE
 import com.simohypers.limusic.domain.repository.ImportProgress
 import com.simohypers.limusic.Platform
-import com.simohypers.limusic.expect.Tunnel
 import com.simohypers.limusic.expect.ui.filePickerResult
 import com.simohypers.limusic.expect.ui.fileSaverResult
 import com.simohypers.limusic.expect.ui.isLyricsBlurSupported
@@ -379,16 +378,6 @@ import limusic.composeapp.generated.resources.sticky_shuffle
 import limusic.composeapp.generated.resources.sticky_shuffle_hint
 import limusic.composeapp.generated.resources.shuffle_whole_queue
 import limusic.composeapp.generated.resources.shuffle_whole_queue_hint
-import limusic.composeapp.generated.resources.tunnel_consent_needed
-import limusic.composeapp.generated.resources.tunnel_description
-import limusic.composeapp.generated.resources.tunnel_failed
-import limusic.composeapp.generated.resources.tunnel_import
-import limusic.composeapp.generated.resources.tunnel_none
-import limusic.composeapp.generated.resources.tunnel_off
-import limusic.composeapp.generated.resources.tunnel_on
-import limusic.composeapp.generated.resources.tunnel_remove
-import limusic.composeapp.generated.resources.tunnel_remove_hint
-import limusic.composeapp.generated.resources.tunnel_title
 import limusic.composeapp.generated.resources.warning
 import limusic.composeapp.generated.resources.weekly
 import limusic.composeapp.generated.resources.youtube_account
@@ -950,71 +939,6 @@ fun SettingScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                        SettingGroup(title = null) {
-                            val tunnelStatus by Tunnel.status.collectAsStateWithLifecycle()
-                            val tunnelScope = rememberCoroutineScope()
-                            // Declared typed so the lambda body (a Job) coerces to Unit through `to`.
-                            val tunnelToggle: (Boolean) -> Unit = { on ->
-                                tunnelScope.launch { Tunnel.setEnabled(on) }
-                            }
-                            val confPicker =
-                                filePickerResult { uri ->
-                                    if (uri == null) return@filePickerResult
-                                    tunnelScope.launch { Tunnel.importConf(uri) }
-                                }
-                            SettingItem(
-                                title = stringResource(Res.string.tunnel_title),
-                                subtitle = stringResource(Res.string.tunnel_description),
-                                switch = (tunnelStatus.on to tunnelToggle),
-                            )
-                            if (tunnelStatus.hasConf) {
-                                SettingItem(
-                                    title = tunnelStatus.confName,
-                                    value = stringResource(if (tunnelStatus.on) Res.string.tunnel_on else Res.string.tunnel_off),
-                                    navigates = true,
-                                    onClick = { confPicker.launch() },
-                                )
-                            }
-                            SettingItem(
-                                title = stringResource(Res.string.tunnel_import),
-                                value = if (tunnelStatus.hasConf) "" else stringResource(Res.string.tunnel_none),
-                                navigates = true,
-                                onClick = { confPicker.launch() },
-                            )
-                            if (tunnelStatus.hasConf) {
-                                SettingItem(
-                                    title = stringResource(Res.string.tunnel_remove),
-                                    subtitle = stringResource(Res.string.tunnel_remove_hint),
-                                    smallSubtitle = true,
-                                    navigates = true,
-                                    onClick = {
-                                        viewModel.setBasicAlertData(
-                                            SettingBasicAlertState(
-                                                title = runBlocking { getString(Res.string.warning) },
-                                                message = runBlocking { getString(Res.string.tunnel_remove_hint) },
-                                                confirm =
-                                                    runBlocking { getString(Res.string.delete) } to {
-                                                        tunnelScope.launch { Tunnel.removeConf() }
-                                                        viewModel.setBasicAlertData(null)
-                                                    },
-                                                dismiss = runBlocking { getString(Res.string.cancel) },
-                                            ),
-                                        )
-                                    },
-                                )
-                            }
-                            if (tunnelStatus.needsConsent) {
-                                SettingItem(
-                                    title = stringResource(Res.string.tunnel_consent_needed),
-                                    smallSubtitle = true,
-                                )
-                            } else if (tunnelStatus.error.isNotBlank()) {
-                                SettingItem(
-                                    title = stringResource(Res.string.tunnel_failed, tunnelStatus.error),
-                                    smallSubtitle = true,
-                                )
                             }
                         }
                     }

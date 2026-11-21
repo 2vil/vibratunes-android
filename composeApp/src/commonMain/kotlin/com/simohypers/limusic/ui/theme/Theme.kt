@@ -6,6 +6,8 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.text.TextStyle
@@ -226,6 +228,9 @@ fun AppTheme(
     // plays or the cover has no colour. Layered over the theme, which comes back untouched.
     artworkColor: Color? = null,
     flatProgressBar: Boolean = false,
+    // Interface scale, the phone's answer to the desktop zoom: everything under the theme is
+    // laid out through this density, so every dp and sp moves together (1f = the system's own).
+    uiScale: Float = 1f,
     content:
         @Composable()
         () -> Unit,
@@ -253,6 +258,8 @@ fun AppTheme(
                 LocalAppScheme provides (colorScheme to isDark),
                 LocalArtworkColors provides (artworkColor != null),
                 LocalFlatProgressBar provides flatProgressBar,
+                LocalDensity provides
+                    Density(LocalDensity.current.density * uiScale, LocalDensity.current.fontScale),
                 content = content,
             )
         },
