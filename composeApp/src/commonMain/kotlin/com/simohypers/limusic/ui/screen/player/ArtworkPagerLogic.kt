@@ -15,8 +15,8 @@ import com.simohypers.limusic.domain.data.model.browse.album.Track
  *   position, and it is preferred because it is the only answer that survives a queue holding
  *   the same `videoId` twice. Nothing dedupes the queue — an endless/radio tail, or "Add to
  *   queue" on a track already in it, is enough — and searching by id then returns the LAST copy
- *   while the player sits on an earlier one. Everything downstream inherits that: the Apple
- *   Music queue cuts its "up next" list at `index + 1` and swallows every track in between, a
+ *   while the player sits on an earlier one. Everything downstream inherits that: the
+ *   Immersive queue cuts its "up next" list at `index + 1` and swallows every track in between, a
  *   swipe on the artwork pager sends Next from the wrong slot, and a row's ⋯ opens on a
  *   different song than the one touched.
  * - It is cross-checked against [nowPlayingVideoId] rather than trusted outright: while the

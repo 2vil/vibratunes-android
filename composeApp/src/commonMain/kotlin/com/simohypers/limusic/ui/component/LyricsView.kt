@@ -177,8 +177,8 @@ private const val FLARE_ATTACK_MS = 500
 // glow trailing for a long way — which is what a wake looks like.
 private const val FLARE_TAIL_CHARS = 2.5f
 
-// How far the character under the light lifts, as a fraction of the font size — Apple nudges the
-// syllable being sung upward, and the eye reads the lift as the light having weight.
+// How far the character under the light lifts, as a fraction of the font size: the
+// syllable being sung is nudged upward, and the eye reads the lift as the light having weight.
 //
 // Driven by the flare itself rather than by a second animation, so the rise travels with the light
 // instead of chasing it. It is a graphicsLayer translation, which happens at DRAW time: the glyph
@@ -426,9 +426,9 @@ fun LyricsView(
     // the three player styles) want the user's one choice, so making them each thread it through
     // would be four copies of the same lookup. Re-checked against isLyricsBlurSupported() even
     // though Settings hides the option below Android 12 — a DataStore restored from a backup, or
-    // carried to another device, can still hold APPLE_MUSIC on a phone that cannot draw it.
+    // carried to another device, can still hold the Immersive style on a phone that cannot draw it.
     val lyricsStyle by dataStoreManager.lyricsStyle.collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_CLASSIC)
-    val appleStyle = lyricsStyle == DataStoreManager.LYRICS_STYLE_APPLE_MUSIC && isLyricsBlurSupported()
+    val immersiveStyle = lyricsStyle == DataStoreManager.LYRICS_STYLE_IMMERSIVE && isLyricsBlurSupported()
 
     // Read here for the same reason the style is: all four call sites want the user's one choice,
     // so threading it through each of them would be four copies of the same lookup. The stored
@@ -459,7 +459,7 @@ fun LyricsView(
     // previous line that stays on screen above the sung one.
     val exposedRowPx =
         with(LocalDensity.current) {
-            AppleMusicLyricLineHeight.toPx() + AppleMusicLyricGap.toPx()
+            ImmersiveLyricLineHeight.toPx() + ImmersiveLyricGap.toPx()
         }
 
     // The lines this sheet actually renders: the sheet's own, a break drawn as a note.
@@ -523,16 +523,16 @@ fun LyricsView(
                 thresholdMs = 1000L,
             )
         }
-    // The Apple Music handover: rows set off one behind another instead of as one block. Per sheet,
+    // The Immersive handover: rows set off one behind another instead of as one block. Per sheet,
     // so a new song's first line counts as the next line rather than as a jump.
     val stagger = remember(displayLines) { LyricsStagger() }
 
-    LaunchedEffect(currentLineIndex, lyricsData.lyrics.syncType, appleStyle, stagger) {
+    LaunchedEffect(currentLineIndex, lyricsData.lyrics.syncType, immersiveStyle, stagger) {
         if (currentLineIndex > -1 &&
             (lyricsData.lyrics.syncType == "LINE_SYNCED" || lyricsData.lyrics.syncType == "RICH_SYNCED")
         ) {
-            if (appleStyle) {
-                // NEAR the top, not against it: Apple leaves exactly ONE physical row of the
+            if (immersiveStyle) {
+                // NEAR the top, not against it: this leaves exactly ONE physical row of the
                 // previous lyric visible above the line being sung. Scrolling to `index - 1`
                 // instead — which is what this did first — anchors the whole previous ITEM, and a
                 // lyric that wraps is one item spanning two or three rows, so the entire wrapped
@@ -548,12 +548,12 @@ fun LyricsView(
     }
 
     BoxWithConstraints(modifier = modifier) {
-        // Apple keeps the sung line at the TOP even when it is the last line of the song — which
+        // The sung line stays at the TOP even when it is the last line of the song, which
         // is only possible if there is empty space below it to scroll into. Without this tail the
         // list simply runs out of content and the closing lines pile up against the bottom edge,
         // so the final third of every song reads bottom-anchored instead of top-anchored.
         // The Classic page centres the sung line, so the closing lines need room below to get there.
-        val tailPadding = if (appleStyle) maxHeight * 0.72f else if (limusic) maxHeight * 0.5f else 0.dp
+        val tailPadding = if (immersiveStyle) maxHeight * 0.72f else if (limusic) maxHeight * 0.5f else 0.dp
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -576,7 +576,7 @@ fun LyricsView(
 
                 line?.words?.let { words ->
                     // Signed distance from the line being sung. The shell is the only place that
-                    // knows it, and it is the ONLY extra input the Apple Music renderer needs —
+                    // knows it, and it is the ONLY extra input the Immersive renderer needs —
                     // which is why the split lives here and not inside the line items.
                     val distanceFromCurrent = if (currentLineIndex < 0) 0 else index - currentLineIndex
 
@@ -638,7 +638,7 @@ fun LyricsView(
 
                                 if (parsedLine != null) {
                                     // Reused verbatim by BOTH styles: word-by-word highlighting is
-                                    // already what Apple does with a rich-synced line, so there is
+                                    // already what this style wants from a rich-synced line, so there is
                                     // nothing to re-implement — only the focus treatment differs,
                                     // and that is applied by the wrapper below.
                                     RichSyncLyricsLineItem(
@@ -649,26 +649,26 @@ fun LyricsView(
                                         background = background,
                                         currentTimeMs = current.current - globalLyricsOffsetMs - songLyricsOffsetMs,
                                         isCurrent = index == currentLineIndex,
-                                        customFontSize = if (appleStyle) AppleMusicLyricFontSize else null,
-                                        glow = if (appleStyle && index == currentLineIndex) AppleMusicActiveLineGlow else null,
-                                        pendingColorOverride = if (appleStyle) AppleMusicPendingWordColor else null,
-                                        translatedColorOverride = if (appleStyle) AppleMusicTranslatedColor else null,
+                                        customFontSize = if (immersiveStyle) ImmersiveLyricFontSize else null,
+                                        glow = if (immersiveStyle && index == currentLineIndex) ImmersiveActiveLineGlow else null,
+                                        pendingColorOverride = if (immersiveStyle) ImmersivePendingWordColor else null,
+                                        translatedColorOverride = if (immersiveStyle) ImmersiveTranslatedColor else null,
                                         translatedStyleOverride =
-                                            if (appleStyle) {
+                                            if (immersiveStyle) {
                                                 typo().bodyMedium.copy(
-                                                    fontSize = AppleMusicSubLineFontSize,
-                                                    lineHeight = AppleMusicSubLineHeight,
+                                                    fontSize = ImmersiveSubLineFontSize,
+                                                    lineHeight = ImmersiveSubLineHeight,
                                                 )
                                             } else {
                                                 null
                                             },
-                                        customPadding = if (appleStyle) AppleMusicLyricGap else 12.dp,
-                                        wrappedLineSpacing = if (appleStyle) AppleMusicWrappedLineSpacing else 0.dp,
-                                        // Apple takes its click from the wrapper Column below, which
+                                        customPadding = if (immersiveStyle) ImmersiveLyricGap else 12.dp,
+                                        wrappedLineSpacing = if (immersiveStyle) ImmersiveWrappedLineSpacing else 0.dp,
+                                        // Immersive takes its click from the wrapper Column below, which
                                         // covers the translation too; a click here as well would put
                                         // a second, smaller target on top of it.
                                         modifier =
-                                            if (appleStyle) {
+                                            if (immersiveStyle) {
                                                 Modifier
                                             } else {
                                                 Modifier.clickable {
@@ -676,16 +676,16 @@ fun LyricsView(
                                                 }
                                             },
                                     )
-                                } else if (appleStyle) {
+                                } else if (immersiveStyle) {
                                     // Parsing failed — fall back to a plain line, but still the
-                                    // Apple-shaped one, or a single unparsable line would render
+                                    // Immersive-shaped one, or a single unparsable line would render
                                     // at a different size than every line around it.
-                                    AppleMusicLyricsLineItem(
+                                    ImmersiveLyricsLineItem(
                                         originalWords = words,
                                         translatedWords = translatedWords,
                                         // Same clause as the line-synced branch below, and it has to
                                         // be here too: [allLinesCurrent] already lifts this line's
-                                        // opacity to full through appleMusicLyricFocus, so without it
+                                        // opacity to full through immersiveLyricFocus, so without it
                                         // the line would come out fully opaque in grey ink.
                                         isCurrent = index == currentLineIndex || allLinesCurrent,
                                         romanizedWords = romanizedWords,
@@ -708,8 +708,8 @@ fun LyricsView(
                             }
 
                             // Line sync or unsynced
-                            appleStyle -> {
-                                AppleMusicLyricsLineItem(
+                            immersiveStyle -> {
+                                ImmersiveLyricsLineItem(
                                     originalWords = words,
                                     translatedWords = translatedWords,
                                     romanizedWords = romanizedWords,
@@ -741,7 +741,7 @@ fun LyricsView(
                         }
                     }
 
-                    if (appleStyle) {
+                    if (immersiveStyle) {
                         // The whole wrapper is the tap target — original line AND translation — the
                         // way AMLL's .lyricLineWrapper is, rather than each Text separately. The
                         // press shows as a tinted rounded panel; indication is null because a
@@ -762,8 +762,8 @@ fun LyricsView(
                                     // the sung line entirely. background() with a shape paints the
                                     // rounded press panel without clipping any of the content.
                                     .background(
-                                        color = if (linePressed) AppleMusicLyricPressedBackground else Color.Transparent,
-                                        shape = RoundedCornerShape(AppleMusicLyricCornerRadius),
+                                        color = if (linePressed) ImmersiveLyricPressedBackground else Color.Transparent,
+                                        shape = RoundedCornerShape(ImmersiveLyricCornerRadius),
                                     ).clickable(
                                         interactionSource = lineInteraction,
                                         indication = null,
@@ -785,14 +785,14 @@ fun LyricsView(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .appleMusicLyricFocus(
+                                        .immersiveLyricFocus(
                                             distanceFromCurrent,
                                             blurEnabled = !isDragging && !readingAhead,
                                             hasActiveLine = currentLineIndex >= 0,
                                             allLinesCurrent = allLinesCurrent,
                                         ),
                             ) {
-                                Box(modifier = Modifier.padding(horizontal = AppleMusicLyricPaddingX)) {
+                                Box(modifier = Modifier.padding(horizontal = ImmersiveLyricPaddingX)) {
                                     renderLine()
                                 }
                             }
@@ -804,7 +804,7 @@ fun LyricsView(
             }
             footerContent?.let { footer ->
                 item {
-                    if (appleStyle) {
+                    if (immersiveStyle) {
                         // Same gutter as the lyrics, and dimmed — but NOT blurred. Blur means
                         // "further away in the song"; the caption is not part of the song at all,
                         // it is a note about where the words came from. Blurring it made it look
@@ -816,7 +816,7 @@ fun LyricsView(
                                     // The row after the last line: it trails with the lines, or
                                     // the lines would run into it while they catch up.
                                     .graphicsLayer { translationY = stagger.lagPx(displayLines.size) }
-                                    .padding(horizontal = AppleMusicLyricPaddingX)
+                                    .padding(horizontal = ImmersiveLyricPaddingX)
                                     .alpha(FOOTER_ALPHA),
                         ) {
                             footer()
@@ -1062,21 +1062,21 @@ fun RichSyncLyricsLineItem(
     isCurrent: Boolean,
     customFontSize: TextUnit? = null,
     customPadding: Dp = 12.dp,
-    // Null for the Classic renderer, so nothing about it changes. The Apple Music style passes a
+    // Null for the Classic renderer, so nothing about it changes. The Immersive style passes a
     // bloom here for the line being sung — applied per WORD rather than per line, because in a
     // rich-synced line only the words already sung are lit.
     glow: Shadow? = null,
     pendingColorOverride: Color? = null,
-    // Same deal: null keeps Classic's yellow (and its dimmed variant) exactly as it was. Apple
+    // Same deal: null keeps Classic's yellow (and its dimmed variant) exactly as it was. Immersive
     // renders translations in white, and this is a SHARED composable — hardcoding white here
     // would repaint the Classic style too.
     translatedColorOverride: Color? = null,
-    // Null / 1f keep Classic's bodyMedium at full opacity. Apple Music passes AMLL's sub-line
+    // Null / 1f keep Classic's bodyMedium at full opacity. Immersive passes AMLL's sub-line
     // ratios (0.5em, 1.5em leading, 0.3 opacity) — again as parameters, because this composable is
     // shared and hardcoding them would resize Classic's translations too.
     translatedStyleOverride: TextStyle? = null,
     // Zero keeps FlowRow's original Arrangement.Center, so Classic wraps exactly as it always has.
-    // Apple Music passes real spacing because its lines are large enough to wrap often, and
+    // Immersive passes real spacing because its lines are large enough to wrap often, and
     // FlowRow ignores the lineHeight that spaces the non-wrapped renderer's lines.
     wrappedLineSpacing: Dp = 0.dp,
     // Limusic Lyrics: the line is the other singer's in a duet, so it sits on the far side.
@@ -1424,9 +1424,9 @@ private fun AnimatedWord(
                                     }
                                 shape * flareGate
                             }
-                        // Lifted when the light touches it, over CHAR_RISE_MS, and LEFT THERE. Apple
-                        // never brings the glyph back down — the sung half of a line simply sits higher
-                        // than the half still to come — so there is no fall to animate, only an arrival.
+                        // Lifted when the light touches it, over CHAR_RISE_MS, and LEFT THERE. It
+                        // never comes back down: the sung half of a line simply sits higher
+                        // than the half still to come, so there is no fall to animate, only an arrival.
                         //
                         // The trigger is instant, the travel is not: the light moves on long before the
                         // character has finished rising, which is exactly what makes the line ripple

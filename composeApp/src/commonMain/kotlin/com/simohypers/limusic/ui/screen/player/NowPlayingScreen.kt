@@ -72,7 +72,7 @@ import com.simohypers.limusic.ui.navigation.destination.list.AlbumDestination
 import com.simohypers.limusic.ui.navigation.destination.list.ArtistDestination
 import com.simohypers.limusic.ui.navigation.destination.player.FullscreenDestination
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
-import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentAppleMusic
+import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentImmersive
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentLimusic
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentM3Expressive
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentState
@@ -172,7 +172,7 @@ fun NowPlayingScreenContent(
     // Plus this song's own nudge from the source picker.
     val lyricsOffsetMs = globalLyricsOffsetMs + (screenDataState.lyricsData?.offsetMs ?: 0)
     val castState by sharedViewModel.castState.collectAsStateWithLifecycle()
-    // Apple Music style's quality line under the progress bar — see NowPlayingContentState.toAudioQualityLabel.
+    // Immersive style's quality line under the progress bar — see NowPlayingContentState.toAudioQualityLabel.
     val formatState by sharedViewModel.format.collectAsStateWithLifecycle(initialValue = null)
 
     val videosOn by sharedViewModel.getVideo.collectAsStateWithLifecycle()
@@ -232,7 +232,7 @@ fun NowPlayingScreenContent(
             isUserDraggingActive = scrolling && !animating
             // Latched, and cleared only once a seek has been dispatched for it. settledPage can
             // move for reasons that are NOT a swipe — the pager being composed for the first time,
-            // or re-composed after the Apple Music style spent a while on its Queue/Lyrics tab,
+            // or re-composed after the Immersive style spent a while on its Queue/Lyrics tab,
             // where the pager does not exist at all and its settledPage stays frozen on the track
             // that was playing when the user left MAIN. Without this latch, coming back from that
             // tab replays a stale page as though it had just been swiped to.
@@ -293,7 +293,7 @@ fun NowPlayingScreenContent(
                 } else {
                     artworkPagerState.scrollToPage(target)
                 }
-                // A pager off screen (Classic's Queue or Lyrics view, Apple's Queue tab) has no
+                // A pager off screen (Classic's Queue or Lyrics view, Immersive's Queue tab) has no
                 // layout to slide through, so the slide moves nothing and the page stays on the old
                 // track, its cover shown on return. A snap only sets the position, which holds.
                 if (artworkPagerState.currentPage != target) artworkPagerState.scrollToPage(target)
@@ -314,12 +314,12 @@ fun NowPlayingScreenContent(
     // happens to hold — distinctUntilChanged has no previous value to suppress it against — so a
     // STALE page was dispatched as though the user had just swiped to it.
     //
-    // That is what broke the Apple Music queue: its pager lives inside MAIN, so while QUEUE is on
+    // That is what broke the Immersive queue: its pager lives inside MAIN, so while QUEUE is on
     // screen the pager is not composed at all and settledPage still points at the previous track.
     // Tapping a row seeked correctly, the track changed, this effect was rebuilt, and it
     // immediately read the stale page — computeSeekAction(previous, current) == Previous — which
     // sent the player straight back to the song that had just been playing.
-    // AppleMusicQueueView already uses rememberUpdatedState for exactly this hazard (its offset).
+    // ImmersiveQueueView already uses rememberUpdatedState for exactly this hazard (its offset).
     val latestOrderIndex by rememberUpdatedState(currentOrderIndex)
     val latestQueueSize by rememberUpdatedState(artworkQueue.size)
     LaunchedEffect(artworkPagerState) {
@@ -328,7 +328,7 @@ fun NowPlayingScreenContent(
             .collect { settled ->
                 if (isAnimatingFromPlayer) return@collect
                 // The seek is a response to a SWIPE, so there must have been one. This is what
-                // stops the Apple Music queue from being overruled: tapping a row seeks correctly,
+                // stops the Immersive queue from being overruled: tapping a row seeks correctly,
                 // the track changes, and then this effect would otherwise notice the pager sitting
                 // on the old page and "correct" it right back.
                 if (!pendingUserSwipe) return@collect
@@ -389,10 +389,10 @@ fun NowPlayingScreenContent(
     }
     val fullscreenLyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreenLyricsRequested) {
-        // Classic's and Apple Music's lyrics are a view of their own page, so they take the request themselves.
+        // Classic's and Immersive's lyrics are a view of their own page, so they take the request themselves.
         if (fullscreenLyricsRequested &&
             nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_SPOTIFY &&
-            nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC
+            nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE
         ) {
             showFullscreenLyrics = true
             sharedViewModel.consumeFullscreenLyricsRequest()
@@ -402,7 +402,7 @@ fun NowPlayingScreenContent(
     var showQueueBottomSheet by rememberSaveable {
         mutableStateOf(false)
     }
-    // A queue row's ⋯ in the Apple Music style, whose queue is a tab of this screen rather than a
+    // A queue row's ⋯ in the Immersive style, whose queue is a tab of this screen rather than a
     // sheet: its position and the track that was there. The other styles' queue sheet hosts its own.
     var queueMoreFor by remember { mutableStateOf<Pair<Int, Track>?>(null) }
 
@@ -808,7 +808,7 @@ fun NowPlayingScreenContent(
     }
 
     // Classic (the stored value is still SPOTIFY) is the Limusic player; the other two are SimpMusic's.
-    // Classic and M3 Expressive follow light/dark; Apple Music's white-on-cover look stays dark.
+    // Classic and M3 Expressive follow light/dark; Immersive's white-on-cover look stays dark.
     when (nowPlayingStyle) {
         DataStoreManager.NOW_PLAYING_STYLE_M3_EXPRESSIVE ->
             NowPlayingContentM3Expressive(
@@ -816,9 +816,9 @@ fun NowPlayingScreenContent(
                 actions = actions,
             )
 
-        DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC ->
+        DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE ->
             ForceDarkContent {
-                NowPlayingContentAppleMusic(
+                NowPlayingContentImmersive(
                     state = state,
                     actions = actions,
                 )

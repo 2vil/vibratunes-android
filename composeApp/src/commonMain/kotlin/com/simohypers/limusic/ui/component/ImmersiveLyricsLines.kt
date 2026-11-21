@@ -26,7 +26,7 @@ import com.simohypers.limusic.ui.theme.typo
 import kotlin.math.abs
 
 /**
- * Apple Music renders EVERY lyric line at the same size — what separates the line being sung from
+ * The Immersive style renders EVERY lyric line at the same size: what separates the line being sung from
  * the rest is focus, not scale: the active line is opaque and sharp, its neighbours dim and
  * progressively blurred with distance, as if the page had a shallow depth of field.
  *
@@ -53,8 +53,7 @@ private const val BLUR_PER_LINE_EM = 0.045f
 private const val BLUR_MAX_EM = 0.2f
 // AMLL's resolveOpacity returns a flat 1 for unsung lines, but the reference screenshots plainly
 // fade with distance — the line under the sung one sits at roughly half, the next at a third, and
-// beyond that they all but vanish. AMLL is reproducing Apple, not defining it, and on this point
-// the screenshots win.
+// beyond that they all but vanish. On this point the screenshots win.
 //
 // Blur and this work together rather than either doing the job alone: blur alone leaves far lines
 // as bright smears, fade alone leaves them sharp and readable when they should not be.
@@ -78,26 +77,26 @@ private const val PRE_ROLL_LINE_ALPHA = 0.6f
 // grey against the white of what has already been sung, or the wipe carries no contrast and the
 // line never reads as lighting up. Classic's DimRichPendingColor is LightGray at 60%, far too
 // close to white for that.
-internal val AppleMusicPendingWordColor = Color(0xFF8E8E8E)
+internal val ImmersivePendingWordColor = Color(0xFF8E8E8E)
 
 /**
- * Apple sets lyrics far larger than body copy — a line fills most of the width and wraps after a
+ * Lyrics here are set far larger than body copy: a line fills most of the width and wraps after a
  * few words, which is what makes the page readable at arm's length while the phone sits on a desk.
  * The app's own headlineLarge is 23sp, sized for list headers rather than for this, so the size is
  * overridden here while the weight and font family still come from the theme.
  */
-internal val AppleMusicLyricFontSize = 28.sp
+internal val ImmersiveLyricFontSize = 28.sp
 // Taken from AMLL's stylesheet (packages/core/src/styles/lyric-player.module.css) rather than
 // measured off a screenshot. Everything there is expressed in `em`, so it scales with whatever
-// font size the host picks — these are those ratios resolved against AppleMusicLyricFontSize.
+// font size the host picks — these are those ratios resolved against ImmersiveLyricFontSize.
 //
 //   .lyricLineWrapper { padding: 0.4em <x> }  -> 0.4 * 32 = 12.8dp above AND below each line
 //   .lyricMainLine    — no line-height at all -> the browser default, ~1.2em
 //
 // Note which one is bigger: the leading INSIDE a wrapped line is tighter than the padding between
 // two lines, and that is what makes a wrapped lyric read as one thought instead of two.
-internal val AppleMusicLyricLineHeight = 34.sp
-internal val AppleMusicLyricGap = 20.dp
+internal val ImmersiveLyricLineHeight = 34.sp
+internal val ImmersiveLyricGap = 20.dp
 
 // Sizing from .lyricSubLine { font-size: max(0.5em, 10px); line-height: 1.5em } plus the flex
 // `gap: 0.3em` above it.
@@ -106,9 +105,9 @@ internal val AppleMusicLyricGap = 20.dp
 // a pronunciation aid you glance at — whereas this row is the TRANSLATION, which the user turned
 // on specifically to read. At 0.3 it was unreadable even on the line being sung. It follows the
 // line's own colour instead: white-ish while sung, grey with the rest.
-internal val AppleMusicSubLineFontSize = 14.sp
-internal val AppleMusicSubLineHeight = 21.sp
-internal val AppleMusicMainToSubGap = 12.dp
+internal val ImmersiveSubLineFontSize = 14.sp
+internal val ImmersiveSubLineHeight = 21.sp
+internal val ImmersiveMainToSubGap = 12.dp
 
 // .lyricLineWrapper { border-radius: 0.25em } plus its :hover / :active background. There is no
 // hover on a phone, so the press state takes the more visible of the two (#fff1). Note it is a
@@ -119,30 +118,30 @@ internal val AppleMusicMainToSubGap = 12.dp
 // it itself rather than trusting each caller. FullscreenLyricsSheet passes a bare fillMaxSize(),
 // so a caller-supplied gutter would have left the fullscreen sheet's text flush against both
 // edges while the Now Playing tab looked right.
-internal val AppleMusicLyricPaddingX = 20.dp
+internal val ImmersiveLyricPaddingX = 20.dp
 
-internal val AppleMusicLyricCornerRadius = 8.dp
-internal val AppleMusicLyricPressedBackground = Color.White.copy(alpha = 0.067f)
+internal val ImmersiveLyricCornerRadius = 8.dp
+internal val ImmersiveLyricPressedBackground = Color.White.copy(alpha = 0.067f)
 
 // FlowRow lays wrapped words out itself and ignores lineHeight entirely, so the rich-sync path
 // needs the same leading expressed as explicit spacing between its rows — and it has to stay
-// TIGHTER than AppleMusicLyricGap, for the same reason: rows here are one lyric wrapping, while
+// TIGHTER than ImmersiveLyricGap, for the same reason: rows here are one lyric wrapping, while
 // the gap separates two different lyrics. 38sp of leading over the ~37sp a 32sp line occupies
 // leaves almost nothing, which matches AMLL letting the default leading stand.
-internal val AppleMusicWrappedLineSpacing = 2.dp
+internal val ImmersiveWrappedLineSpacing = 2.dp
 
-// White, like Apple — NOT the Classic renderer's yellow. Slightly under full opacity so the
+// White, NOT the Classic renderer's yellow. Slightly under full opacity so the
 // translation still reads as secondary to the line it translates.
-internal val AppleMusicTranslatedColor = Color.White.copy(alpha = 0.78f)
+internal val ImmersiveTranslatedColor = Color.White.copy(alpha = 0.78f)
 
 // A shade under the translation's: on a line carrying original + reading + translation, the
 // reading is the one you stop needing once you know the song, so it recedes first.
-internal val AppleMusicRomanizedColor = Color.White.copy(alpha = 0.62f)
+internal val ImmersiveRomanizedColor = Color.White.copy(alpha = 0.62f)
 
 // The line NOT being sung is grey, full stop — white at reduced opacity is still white on a dark
 // page, which is why every line looked equally lit no matter how the alpha was tuned. This is the
 // single biggest signal separating the sung line from the rest; blur and opacity only refine it.
-internal val AppleMusicInactiveLineColor = Color(0xFF9B9B9B)
+internal val ImmersiveInactiveLineColor = Color(0xFF9B9B9B)
 
 // Passing this to a rich-synced line is what ENABLES AMLL's emphasis maths in AnimatedWord; the
 // alpha and radius here are placeholders, because that code computes both from the word's own
@@ -151,7 +150,7 @@ internal val AppleMusicInactiveLineColor = Color(0xFF9B9B9B)
 // Deliberately NOT applied to line-synced lyrics: those carry no per-word timing, so there is no
 // sustain to reflect, and a constant halo there is pure decoration — which is what made the first
 // attempt look wrong.
-internal val AppleMusicActiveLineGlow = Shadow(color = Color.White, offset = Offset.Zero, blurRadius = 0f)
+internal val ImmersiveActiveLineGlow = Shadow(color = Color.White, offset = Offset.Zero, blurRadius = 0f)
 
 // No glow constant for line-synced lyrics on purpose. Without per-word timing there is no single
 // word to flare, and lighting the whole line instead just makes it look smudged — the sung line is
@@ -166,7 +165,7 @@ internal val AppleMusicActiveLineGlow = Shadow(color = Color.White, offset = Off
  * jumping.
  */
 @Composable
-fun Modifier.appleMusicLyricFocus(
+fun Modifier.immersiveLyricFocus(
     distanceFromCurrent: Int,
     blurEnabled: Boolean,
     hasActiveLine: Boolean = true,
@@ -183,7 +182,7 @@ fun Modifier.appleMusicLyricFocus(
             distanceFromCurrent < 0 -> abs(distanceFromCurrent) + 1
             else -> distanceFromCurrent
         }
-    val fontSizeDp = with(LocalDensity.current) { AppleMusicLyricFontSize.toDp() }
+    val fontSizeDp = with(LocalDensity.current) { ImmersiveLyricFontSize.toDp() }
     val targetBlur: Dp =
         if (!blurEnabled || allLinesCurrent || !hasActiveLine || distanceFromCurrent == 0) {
             0.dp
@@ -203,8 +202,8 @@ fun Modifier.appleMusicLyricFocus(
             else -> (1f - distance * ALPHA_FALLOFF_PER_LINE).coerceAtLeast(MIN_LINE_ALPHA)
         }
 
-    val blurRadius by animateDpAsState(targetValue = targetBlur, animationSpec = tween(400), label = "appleMusicLyricBlur")
-    val lineAlpha by animateFloatAsState(targetValue = targetAlpha, animationSpec = tween(400), label = "appleMusicLyricAlpha")
+    val blurRadius by animateDpAsState(targetValue = targetBlur, animationSpec = tween(400), label = "immersiveLyricBlur")
+    val lineAlpha by animateFloatAsState(targetValue = targetAlpha, animationSpec = tween(400), label = "immersiveLyricAlpha")
 
     // alpha BEFORE blur: blurring an already-faded line keeps the two effects independent, whereas
     // fading a blurred layer washes the blur out into a flat smear.
@@ -237,13 +236,13 @@ fun Modifier.appleMusicLyricFocus(
 }
 
 /**
- * One line-synced lyric line, Apple Music style: same size for every line (the Classic renderer
+ * One line-synced lyric line, Immersive style: same size for every line (the Classic renderer
  * swaps headlineLarge/headlineMedium instead), white, aligned to its text direction, with the translation underneath.
- * Focus is applied by the caller through [appleMusicLyricFocus] so the blur wraps the whole line
+ * Focus is applied by the caller through [immersiveLyricFocus] so the blur wraps the whole line
  * including its translation.
  */
 @Composable
-fun AppleMusicLyricsLineItem(
+fun ImmersiveLyricsLineItem(
     originalWords: String,
     translatedWords: String?,
     isCurrent: Boolean,
@@ -254,50 +253,50 @@ fun AppleMusicLyricsLineItem(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Spacer(modifier = Modifier.height(AppleMusicLyricGap))
+        Spacer(modifier = Modifier.height(ImmersiveLyricGap))
         LyricText(
             text = originalWords,
             modifier = Modifier.fillMaxWidth(),
-            color = if (isCurrent) Color.White else AppleMusicInactiveLineColor,
+            color = if (isCurrent) Color.White else ImmersiveInactiveLineColor,
             style =
                 typo().headlineLarge.copy(
-                    fontSize = AppleMusicLyricFontSize,
-                    lineHeight = AppleMusicLyricLineHeight,
+                    fontSize = ImmersiveLyricFontSize,
+                    lineHeight = ImmersiveLyricLineHeight,
                 ),
         )
         if (romanizedWords != null) {
-            Spacer(modifier = Modifier.height(AppleMusicMainToSubGap))
+            Spacer(modifier = Modifier.height(ImmersiveMainToSubGap))
             LyricText(
                 text = romanizedWords,
                 alignmentText = originalWords,
                 modifier = Modifier.fillMaxWidth(),
                 style =
                     typo().bodyMedium.copy(
-                        fontSize = AppleMusicSubLineFontSize,
-                        lineHeight = AppleMusicSubLineHeight,
+                        fontSize = ImmersiveSubLineFontSize,
+                        lineHeight = ImmersiveSubLineHeight,
                     ),
                 // Follows the line's own state exactly as the translation does: readable white-ish
                 // on the sung line, the same grey as the lyric everywhere else.
-                color = if (isCurrent) AppleMusicRomanizedColor else AppleMusicInactiveLineColor,
+                color = if (isCurrent) ImmersiveRomanizedColor else ImmersiveInactiveLineColor,
             )
         }
         if (translatedWords != null) {
-            Spacer(modifier = Modifier.height(AppleMusicMainToSubGap))
+            Spacer(modifier = Modifier.height(ImmersiveMainToSubGap))
             LyricText(
                 text = translatedWords,
                 alignmentText = originalWords,
                 modifier = Modifier.fillMaxWidth(),
                 style =
                     typo().bodyMedium.copy(
-                        fontSize = AppleMusicSubLineFontSize,
-                        lineHeight = AppleMusicSubLineHeight,
+                        fontSize = ImmersiveSubLineFontSize,
+                        lineHeight = ImmersiveSubLineHeight,
                     ),
                 // The colour still follows the line's own state; AMLL carries the whole sub-line at
                 // a flat 0.3 opacity on top of that, which is applied as a modifier so it composes
-                // with appleMusicLyricFocus's own dimming instead of fighting it.
-                color = if (isCurrent) AppleMusicTranslatedColor else AppleMusicInactiveLineColor,
+                // with immersiveLyricFocus's own dimming instead of fighting it.
+                color = if (isCurrent) ImmersiveTranslatedColor else ImmersiveInactiveLineColor,
             )
         }
-        Spacer(modifier = Modifier.height(AppleMusicLyricGap))
+        Spacer(modifier = Modifier.height(ImmersiveLyricGap))
     }
 }

@@ -285,7 +285,7 @@ import limusic.composeapp.generated.resources.lyrics_romanization_description
 import limusic.composeapp.generated.resources.lyrics_sources
 import limusic.composeapp.generated.resources.lyrics_sources_none
 import limusic.composeapp.generated.resources.lyrics_style
-import limusic.composeapp.generated.resources.lyrics_style_apple_music
+import limusic.composeapp.generated.resources.lyrics_style_immersive
 import limusic.composeapp.generated.resources.lyrics_style_classic
 import limusic.composeapp.generated.resources.sign_in
 import limusic.composeapp.generated.resources.sign_in_hint
@@ -960,7 +960,7 @@ fun SettingScreen(
                                 subtitle = stringResource(Res.string.open_player_on_play_info),
                                 switch = (openPlayerOnPlay to { sharedViewModel.setOpenPlayerOnPlay(it) }),
                             )
-                            // Shown in the Apple Music and Material 3 Expressive styles, and on artist pages.
+                            // Shown in the Immersive and Material 3 Expressive styles, and on artist pages.
                             SettingItem(
                                 title = stringResource(Res.string.enable_animated_artwork),
                                 subtitle = stringResource(Res.string.animated_artwork_info),
@@ -1276,15 +1276,15 @@ fun SettingScreen(
                                 onClick = { navController.navigate(LyricsSourcesDestination) },
                             )
                             val requiresAndroid12 = " (" + stringResource(Res.string.requires_android_12) + ")"
-                            // Hidden outright below Android 12 rather than offered with one option: the Apple
-                            // Music treatment IS the blur, and Modifier.blur is a documented no-op there, so
+                            // Hidden outright below Android 12 rather than offered with one option: the
+                            // Immersive treatment IS the blur, and Modifier.blur is a documented no-op there, so
                             // the choice would be between Classic and a broken-looking Classic.
                             if (isLyricsBlurSupported()) {
                                 val lyricsStyleLabels =
                                     listOf(
                                         DataStoreManager.LYRICS_STYLE_CLASSIC to stringResource(Res.string.lyrics_style_classic),
-                                        DataStoreManager.LYRICS_STYLE_APPLE_MUSIC to
-                                            stringResource(Res.string.lyrics_style_apple_music) + requiresAndroid12,
+                                        DataStoreManager.LYRICS_STYLE_IMMERSIVE to
+                                            stringResource(Res.string.lyrics_style_immersive) + requiresAndroid12,
                                     )
                                 SettingItem(
                                     title = stringResource(Res.string.lyrics_style),

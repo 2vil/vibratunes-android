@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -83,9 +83,9 @@ import org.koin.compose.koinInject
  * track has no synced lyrics. Follows the Romanized lyric line setting, like [CoverLyricLine].
  */
 @Composable
-internal fun AppleMusicLyricStrip(
+internal fun ImmersiveLyricStrip(
     state: NowPlayingContentState,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -114,7 +114,7 @@ internal fun AppleMusicLyricStrip(
                 else -> null
             },
         transitionSpec = { lineRise() },
-        label = "appleMusicLyricStrip",
+        label = "immersiveLyricStrip",
         modifier =
             modifier
                 .fillMaxWidth()
@@ -169,7 +169,7 @@ private sealed interface StripContent {
 @Composable
 private fun StripText(
     text: String,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
 ) {
     Text(
         text = text,
@@ -193,7 +193,7 @@ private fun WaitingDots() {
 /**
  * The line being sung under the cover, in the Classic and M3 Expressive players: two lines tall
  * whatever it holds, in the theme's colours. Word-synced lyrics light as they are sung, the way
- * the Apple Music strip lights them, and a new line rises into place as the old one rises away.
+ * the Immersive strip lights them, and a new line rises into place as the old one rises away.
  * Line-synced lyrics show the whole line. [hidden] empties it (M3 Expressive under a fullscreen canvas).
  * With Romanized lyric line on (Settings > Appearance > Player) a line with a reading shows that
  * instead: two lines hold one script, not both.
@@ -253,7 +253,7 @@ private fun AnimatedContentTransitionScope<*>.lineRise(): ContentTransform {
 
 /**
  * A word-synced line drawn twice, [unsung] and lit, the lit copy clipped to where the singer has
- * got to. One line scrolls sideways as a marquee (the Apple Music strip); more wrap, every line
+ * got to. One line scrolls sideways as a marquee (the Immersive strip); more wrap, every line
  * above the sung one lit in full, and always take [maxLines] of height so nothing below moves.
  */
 @Composable

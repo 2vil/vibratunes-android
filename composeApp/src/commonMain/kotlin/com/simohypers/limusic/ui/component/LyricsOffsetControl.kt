@@ -87,7 +87,7 @@ fun LyricsOffsetBar(
 /**
  * Opens [LyricsOffsetBar] to the left of [button], for pages whose lyrics have no header to put a
  * button in. The page draws [button] itself, in its own style; [onPill] puts the bar on the page's
- * pill surface, and false leaves it on the flat fill of the Apple Music tab's round buttons.
+ * pill surface, and false leaves it on the flat fill of the Immersive tab's round buttons.
  * [onInteraction] lets a page that hides its controls on a timer count these taps.
  */
 @Composable

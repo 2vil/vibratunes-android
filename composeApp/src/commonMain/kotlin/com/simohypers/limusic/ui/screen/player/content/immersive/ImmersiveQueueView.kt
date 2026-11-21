@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -88,12 +88,12 @@ import limusic.composeapp.generated.resources.now_playing
  * Ends in the same fixed bottom cluster as MAIN/LYRICS.
  */
 @Composable
-internal fun AppleMusicQueueView(
+internal fun ImmersiveQueueView(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
-    viewState: AppleMusicView,
-    onSelectView: (AppleMusicView) -> Unit,
+    typography: ImmersiveTypography,
+    viewState: ImmersiveView,
+    onSelectView: (ImmersiveView) -> Unit,
     activePillContainer: Color,
     activePillContent: Color,
     deviceVolumeController: DeviceVolumeController?,
@@ -117,7 +117,7 @@ internal fun AppleMusicQueueView(
     // withIndex() BEFORE drop(), so every row carries the index it had in the full queue.
     //
     // This used to be a plain drop() with `offset + localIndex` added back at click time, and that
-    // is exactly where the Apple Music queue diverged from QueueBottomSheet — which never computes
+    // is exactly where the Immersive queue diverged from QueueBottomSheet — which never computes
     // an index at all, it reads the one itemsIndexed hands it over the whole list. Adding the
     // offset back makes every row's identity depend on state.currentOrderIndex, a value DERIVED in
     // the shell; the moment that derivation is off by anything, the row the user tapped and the
@@ -144,7 +144,7 @@ internal fun AppleMusicQueueView(
 
     Column(modifier = modifier.fillMaxSize()) {
         // statusBars + 20dp, not a bare status-bar offset: the grabber that
-        // NowPlayingContentAppleMusic draws above the view Crossfade floats over this column, and
+        // NowPlayingContentImmersive draws above the view Crossfade floats over this column, and
         // without the extra room the header's title slides underneath it.
         Spacer(
             modifier =
@@ -152,15 +152,15 @@ internal fun AppleMusicQueueView(
                     with(localDensity) { WindowInsets.statusBars.getTop(localDensity).toDp() } + 20.dp,
                 ),
         )
-        AppleMusicCompactHeader(state = state, actions = actions, typography = typography)
-        AppleMusicQueuePillsRow(
+        ImmersiveCompactHeader(state = state, actions = actions, typography = typography)
+        ImmersiveQueuePillsRow(
             state = state,
             actions = actions,
             activePillContainer = activePillContainer,
             activePillContent = activePillContent,
             modifier = Modifier.padding(top = 4.dp, bottom = if (state.isShort) 8.dp else 20.dp),
         )
-        AppleMusicContinuePlayingHeader(
+        ImmersiveContinuePlayingHeader(
             state = state,
             dataStoreManager = dataStoreManager,
             typography = typography,
@@ -196,7 +196,7 @@ internal fun AppleMusicQueueView(
             modifier =
                 Modifier
                     .weight(1f)
-                    .appleMusicVerticalFadeEdges(topFade = QUEUE_TOP_FADE, bottomFade = QUEUE_BOTTOM_FADE),
+                    .immersiveVerticalFadeEdges(topFade = QUEUE_TOP_FADE, bottomFade = QUEUE_BOTTOM_FADE),
         ) {
             LazyColumn(
                 state = lazyListState,
@@ -275,7 +275,7 @@ internal fun AppleMusicQueueView(
             }
         }
 
-        AppleMusicBottomCluster(
+        ImmersiveBottomCluster(
             state = state,
             actions = actions,
             typography = typography,
@@ -292,7 +292,7 @@ internal fun AppleMusicQueueView(
 
 /** [LimusicIcons.Info] [LimusicIcons.PlaylistAdd] [LimusicIcons.Shuffle] [LimusicIcons.Repeat] — exactly, per the corrected spec. */
 @Composable
-private fun AppleMusicQueuePillsRow(
+private fun ImmersiveQueuePillsRow(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
     activePillContainer: Color,
@@ -304,7 +304,7 @@ private fun AppleMusicQueuePillsRow(
         modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        AppleMusicQueuePill(
+        ImmersiveQueuePill(
             icon = LimusicIcons.Info,
             active = false,
             activeContainer = activePillContainer,
@@ -312,7 +312,7 @@ private fun AppleMusicQueuePillsRow(
             onClick = { actions.onShowInfo() },
             modifier = Modifier.weight(1f),
         )
-        AppleMusicQueuePill(
+        ImmersiveQueuePill(
             icon = LimusicIcons.PlaylistAdd,
             active = false,
             activeContainer = activePillContainer,
@@ -320,7 +320,7 @@ private fun AppleMusicQueuePillsRow(
             onClick = { actions.onShowAddToPlaylist() },
             modifier = Modifier.weight(1f),
         )
-        AppleMusicQueuePill(
+        ImmersiveQueuePill(
             icon = LimusicIcons.Shuffle,
             active = state.controllerState.isShuffle,
             activeContainer = activePillContainer,
@@ -328,7 +328,7 @@ private fun AppleMusicQueuePillsRow(
             onClick = { actions.onUIEvent(UIEvent.Shuffle) },
             modifier = Modifier.weight(1f),
         )
-        AppleMusicQueuePill(
+        ImmersiveQueuePill(
             icon = if (repeatState is RepeatState.One) LimusicIcons.RepeatOne else LimusicIcons.Repeat,
             active = repeatState !is RepeatState.None,
             activeContainer = activePillContainer,
@@ -340,7 +340,7 @@ private fun AppleMusicQueuePillsRow(
 }
 
 @Composable
-private fun AppleMusicQueuePill(
+private fun ImmersiveQueuePill(
     icon: ImageVector,
     active: Boolean,
     activeContainer: Color,
@@ -353,10 +353,10 @@ private fun AppleMusicQueuePill(
             modifier
                 // Gentler than the default 1.35×: a pill is 83dp wide with only a 10dp gap, so
                 // the full inflate would visibly overlap its neighbour on every tap.
-                .appleMusicPressInflate(pressedScale = 1.08f)
+                .immersivePressInflate(pressedScale = 1.08f)
                 .height(40.dp)
                 .clip(rounded(20.dp))
-                .background(if (active) activeContainer else AppleMusicPillInactive)
+                .background(if (active) activeContainer else ImmersivePillInactive)
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -370,10 +370,10 @@ private fun AppleMusicQueuePill(
 }
 
 @Composable
-private fun AppleMusicContinuePlayingHeader(
+private fun ImmersiveContinuePlayingHeader(
     state: NowPlayingContentState,
     dataStoreManager: DataStoreManager,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
     activePillContainer: Color,
     activePillContent: Color,
     modifier: Modifier = Modifier,
@@ -435,7 +435,7 @@ private fun AppleMusicContinuePlayingHeader(
                         uncheckedBorderColor = Color.White.copy(alpha = 0.45f),
                         uncheckedThumbColor = Color.White.copy(alpha = 0.75f),
                     ),
-                modifier = Modifier.appleMusicPressInflate(pressedScale = 1.08f),
+                modifier = Modifier.immersivePressInflate(pressedScale = 1.08f),
             )
         }
     }

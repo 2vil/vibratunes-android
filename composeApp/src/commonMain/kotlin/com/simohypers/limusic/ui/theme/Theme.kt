@@ -299,7 +299,7 @@ private val SoftRippleConfiguration =
     )
 
 /**
- * Wraps the Apple Music player, the fullscreen video player and views over a dark scrim, so they
+ * Wraps the Immersive player, the fullscreen video player and views over a dark scrim, so they
  * render dark even on the light theme. Classic, M3 Expressive and the collection pages follow it.
  *
  * [LocalForceDarkText] alone is not enough: it only recolors text through [typo]. Icons, buttons and

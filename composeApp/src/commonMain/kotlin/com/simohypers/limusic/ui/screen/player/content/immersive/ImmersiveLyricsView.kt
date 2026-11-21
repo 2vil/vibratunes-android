@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.ui.component.creditName
 import androidx.compose.animation.expandVertically
@@ -46,7 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.expect.ui.DeviceVolumeController
 import com.simohypers.limusic.expect.ui.isLyricsBlurSupported
-import com.simohypers.limusic.ui.component.AppleMusicLyricPaddingX
+import com.simohypers.limusic.ui.component.ImmersiveLyricPaddingX
 import com.simohypers.limusic.ui.component.LyricsOffsetFloatingControl
 import com.simohypers.limusic.ui.component.LyricsView
 import com.simohypers.limusic.ui.component.hasTiming
@@ -76,12 +76,12 @@ import limusic.composeapp.generated.resources.unsynced
  * The top-level composable falls back to MAIN when lyrics disappear mid-session.
  */
 @Composable
-internal fun AppleMusicLyricsView(
+internal fun ImmersiveLyricsView(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
-    viewState: AppleMusicView,
-    onSelectView: (AppleMusicView) -> Unit,
+    typography: ImmersiveTypography,
+    viewState: ImmersiveView,
+    onSelectView: (ImmersiveView) -> Unit,
     activePillContainer: Color,
     activePillContent: Color,
     deviceVolumeController: DeviceVolumeController?,
@@ -93,15 +93,15 @@ internal fun AppleMusicLyricsView(
     val localDensity = LocalDensity.current
     val lyricsData = state.screenData.lyricsData
 
-    // LyricsView applies AppleMusicLyricPaddingX ITSELF, but only on its Apple Music branch — its
+    // LyricsView applies ImmersiveLyricPaddingX ITSELF, but only on its Immersive branch — its
     // Classic branch renders LyricsLineItem, which has no horizontal padding of its own. So this
     // tab, which contributes no gutter, left Classic lyrics flush against the screen edge while
     // the header right above them sits at 20dp. Same split the fullscreen sheet already does:
     // the caller contributes whatever the renderer does not, so the TOTAL is the same either way.
     val lyricsStyle by dataStoreManager.lyricsStyle.collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_CLASSIC)
-    val rendererOwnsGutter = lyricsStyle == DataStoreManager.LYRICS_STYLE_APPLE_MUSIC && isLyricsBlurSupported()
+    val rendererOwnsGutter = lyricsStyle == DataStoreManager.LYRICS_STYLE_IMMERSIVE && isLyricsBlurSupported()
 
-    // Apple hands the whole page to the lyrics once you stop touching it, and brings the transport
+    // The whole page goes to the lyrics once you stop touching it, and brings the transport
     // back the moment you touch it again. rememberSaveable so a rotation does not yank the
     // controls back into view.
     var showCluster by rememberSaveable { mutableStateOf(true) }
@@ -139,7 +139,7 @@ internal fun AppleMusicLyricsView(
 
     Column(modifier = modifier.fillMaxSize()) {
         // statusBars + 20dp, not a bare status-bar offset: the grabber that
-        // NowPlayingContentAppleMusic draws above the view Crossfade floats over this column, and
+        // NowPlayingContentImmersive draws above the view Crossfade floats over this column, and
         // without the extra room the header's title slides underneath it.
         Spacer(
             modifier =
@@ -147,7 +147,7 @@ internal fun AppleMusicLyricsView(
                     with(localDensity) { WindowInsets.statusBars.getTop(localDensity).toDp() } + 20.dp,
                 ),
         )
-        AppleMusicCompactHeader(state = state, actions = actions, typography = typography)
+        ImmersiveCompactHeader(state = state, actions = actions, typography = typography)
 
         Box(
             modifier =
@@ -184,12 +184,12 @@ internal fun AppleMusicLyricsView(
                             // the header/cluster — applied from OUTSIDE the component.
                             // Softer bottom fade than the top: a lyric line is ~54dp tall, and a
                             // 44dp fade dissolved most of the last visible line.
-                            .appleMusicVerticalFadeEdges(topFade = 28.dp, bottomFade = 18.dp)
-                            // Zero under the Apple Music renderer, which insets its own lines so
+                            .immersiveVerticalFadeEdges(topFade = 28.dp, bottomFade = 18.dp)
+                            // Zero under the Immersive renderer, which insets its own lines so
                             // its blur has margin to spill into; the full gutter under Classic,
                             // which insets nothing. Applied AFTER the fade so the fade still spans
                             // the full width.
-                            .padding(horizontal = if (rendererOwnsGutter) 0.dp else AppleMusicLyricPaddingX),
+                            .padding(horizontal = if (rendererOwnsGutter) 0.dp else ImmersiveLyricPaddingX),
                     backgroundColor = Color.Transparent,
                     footerContent = {
                         // Right-aligned, and stacked: plain text rather than the AIBadge pill the
@@ -210,12 +210,12 @@ internal fun AppleMusicLyricsView(
                             // alignment: Column alignment places a whole text block, so a line that
                             // wraps still ends up left-aligned within itself.
                             Text(
-                                text = appleMusicLyricsSyncText(lyricsData),
+                                text = immersiveLyricsSyncText(lyricsData),
                                 style = typography.footer,
                                 textAlign = TextAlign.End,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            val provider = appleMusicLyricsProviderText(lyricsData)
+                            val provider = immersiveLyricsProviderText(lyricsData)
                             if (provider.isNotBlank()) {
                                 Text(
                                     text = provider,
@@ -249,7 +249,7 @@ internal fun AppleMusicLyricsView(
                                 // Adjusting counts as touching the page, or the cluster hides mid-tap.
                                 onInteraction = { interactionTick++ },
                             ) { onClick ->
-                                AppleMusicFloatingCircleButton(icon = LimusicIcons.AvTimer, onClick = onClick)
+                                ImmersiveFloatingCircleButton(icon = LimusicIcons.AvTimer, onClick = onClick)
                             }
                         }
                         // Only when the lyrics (or the translation) actually came from SimpMusic
@@ -257,9 +257,9 @@ internal fun AppleMusicLyricsView(
                         // always gated theirs; this one did not, so it invited a rating on
                         // YouTube/LRCLIB/Spotify lyrics that had nowhere to go.
                         if (lyricsData.canVote()) {
-                            AppleMusicFloatingCircleButton(icon = LimusicIcons.ThumbsUpDown, onClick = { actions.onShowVoteDialog() })
+                            ImmersiveFloatingCircleButton(icon = LimusicIcons.ThumbsUpDown, onClick = { actions.onShowVoteDialog() })
                         }
-                        AppleMusicFloatingCircleButton(icon = LimusicIcons.Share, onClick = { showShareSheet = true })
+                        ImmersiveFloatingCircleButton(icon = LimusicIcons.Share, onClick = { showShareSheet = true })
                     }
                 }
             }
@@ -287,7 +287,7 @@ internal fun AppleMusicLyricsView(
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) {
-            AppleMusicBottomCluster(
+            ImmersiveBottomCluster(
                 state = state,
                 actions = actions,
                 typography = typography,
@@ -307,14 +307,14 @@ internal fun AppleMusicLyricsView(
 private const val CLUSTER_AUTO_HIDE_MS = 3_000L
 
 @Composable
-private fun AppleMusicFloatingCircleButton(
+private fun ImmersiveFloatingCircleButton(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
-                .appleMusicPressInflate()
+                .immersivePressInflate()
                 .size(38.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.24f))
@@ -327,7 +327,7 @@ private fun AppleMusicFloatingCircleButton(
 
 /** The sync-type half of the caption: "Word by word", "Line Synced" or "Unsynced". Its own line. */
 @Composable
-private fun appleMusicLyricsSyncText(lyricsData: NowPlayingScreenData.LyricsData): String {
+private fun immersiveLyricsSyncText(lyricsData: NowPlayingScreenData.LyricsData): String {
     val syncTypeText =
         when (lyricsData.lyrics.syncType) {
             "LINE_SYNCED" -> stringResource(Res.string.line_synced)
@@ -339,4 +339,4 @@ private fun appleMusicLyricsSyncText(lyricsData: NowPlayingScreenData.LyricsData
 
 /** The provider half of the caption. Its own line — see the footer for why. */
 @Composable
-private fun appleMusicLyricsProviderText(lyricsData: NowPlayingScreenData.LyricsData): String = lyricsData.creditName()
+private fun immersiveLyricsProviderText(lyricsData: NowPlayingScreenData.LyricsData): String = lyricsData.creditName()

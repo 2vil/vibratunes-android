@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.extension.ParsedRichSyncLine
 import com.simohypers.limusic.extension.WordTiming

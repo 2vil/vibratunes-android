@@ -237,7 +237,7 @@ class SharedViewModel(
 
 
     /**
-     * Which body of the Apple Music player was open last — held by ENUM NAME so this class stays
+     * Which body of the Immersive player was open last — held by ENUM NAME so this class stays
      * ignorant of the UI enum, which is internal to the player package.
      *
      * It cannot live in the composable: that player is inside a ModalBottomSheet, so dismissing
@@ -1480,7 +1480,7 @@ data class NowPlayingScreenData(
         val isVideo: Boolean,
         val url: String,
         // A still of the clip at the clip's own size — Apple Music's animated artwork sends one.
-        // The Apple Music player shows it under the clip while that loads, and reads the clip's
+        // The Immersive player shows it under the clip while that loads, and reads the clip's
         // proportions off it, so the frame is the right shape before the first video frame arrives.
         val thumbUrl: String? = null,
     )

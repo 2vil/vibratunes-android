@@ -294,7 +294,7 @@
     <string name="published_at">Published on %1$s</string>
     <string name="less">Less</string>
     <string name="enable_animated_artwork">Animated artwork</string>
-    <string name="animated_artwork_info">Play the album's animated cover in the Apple Music and Material 3 Expressive styles, and the artist video on artist pages. Looks them up on Apple Music. No account needed.</string>
+    <string name="animated_artwork_info">Play the album's animated cover in the Immersive and Material 3 Expressive styles, and the artist video on artist pages. Looks them up on Apple Music. No account needed.</string>
     <string name="no_album">No album</string>
     <string name="delete">Delete</string>
     <string name="new_singles">New singles</string>
@@ -306,10 +306,10 @@
     <string name="theme_mode_dark">Dark</string>
     <string name="theme_mode_light">Light</string>
     <string name="now_playing_style_spotify">Classic</string>
-    <string name="now_playing_style_apple_music" translatable="false">Apple Music</string>
+    <string name="now_playing_style_immersive">Immersive</string>
     <string name="lyrics_style">Lyrics style</string>
     <string name="lyrics_style_classic">Classic</string>
-    <string name="lyrics_style_apple_music" translatable="false">Apple Music</string>
+    <string name="lyrics_style_immersive">Immersive</string>
     <string name="requires_android_12" translatable="false">Android 12+</string>
     <string name="lyrics_offset">Lyrics timing offset</string>
     <string name="lyrics_offset_message">Shift every lyric line by this many milliseconds. Use a positive number when you hear the audio later than you see it, which is what Bluetooth headphones do, and a negative number to make the lyrics appear earlier.</string>

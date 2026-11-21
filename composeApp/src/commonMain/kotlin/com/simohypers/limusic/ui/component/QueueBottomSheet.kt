@@ -90,8 +90,8 @@ import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Undo
 import com.simohypers.limusic.ui.screen.player.content.FrostedCover
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicFadeBetween
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicVerticalFadeEdges
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveFadeBetween
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
 import com.simohypers.limusic.ui.theme.AppThemeContent
 import com.simohypers.limusic.ui.theme.typo
 import kotlinx.coroutines.Job
@@ -346,8 +346,8 @@ internal fun QueueList(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .appleMusicVerticalFadeEdges(topFade = 0.dp, bottomFade = BOTTOM_FADE)
-                    .appleMusicFadeBetween(transparentAt = clear, opaqueAt = clear + TOP_FADE)
+                    .immersiveVerticalFadeEdges(topFade = 0.dp, bottomFade = BOTTOM_FADE)
+                    .immersiveFadeBetween(transparentAt = clear, opaqueAt = clear + TOP_FADE)
                     .pointerInput(canEdit, current, hasAutoplay) {
                         if (!canEdit) return@pointerInput
                         detectDragGesturesAfterLongPress(

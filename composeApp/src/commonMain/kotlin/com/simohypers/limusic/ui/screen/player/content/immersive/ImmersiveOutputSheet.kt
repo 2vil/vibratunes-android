@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.AnimatedVisibility
@@ -80,7 +80,7 @@ import limusic.composeapp.generated.resources.devices_paused
 import limusic.composeapp.generated.resources.devices_playing
 
 /**
- * [AppleMusicOutputSheet] wired straight to the player, for the Now Playing styles that only need
+ * [ImmersiveOutputSheet] wired straight to the player, for the Now Playing styles that only need
  * the output list inside the sheet (Classic opens it from its headphones button). No volume row:
  * the owner doesn't want a volume slider in the app.
  */
@@ -91,7 +91,7 @@ internal fun AudioOutputSheetHost(
 ) {
     val player = koinInject<MediaPlayerHandler>().player
     val audioOutputs by player.audioOutputs.collectAsStateWithLifecycle()
-    AppleMusicOutputSheet(
+    ImmersiveOutputSheet(
         outputs = audioOutputs,
         castState = castState,
         deviceVolumeController = null,
@@ -104,14 +104,13 @@ internal fun AudioOutputSheetHost(
 /**
  * Where the sound goes — opened from the headphones half of the action row's capsule.
  *
- * The phone's own outputs and the Cast receivers are one list, the way Apple lists AirPlay speakers
- * beside the iPhone: they answer the same question, so they belong in the same place. Picking a
+ * The phone's own outputs and the Cast receivers are one list: they answer the same question, so they belong in the same place. Picking a
  * local output while casting ends the Cast session first. Built in the app's own sheet style (the
  * same card, handle and rows as the Now Playing ⋯ sheet), not a new one.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AppleMusicOutputSheet(
+internal fun ImmersiveOutputSheet(
     outputs: List<AudioOutput>,
     castState: GenericCastState,
     deviceVolumeController: DeviceVolumeController?,
@@ -252,7 +251,7 @@ internal fun AppleMusicOutputSheet(
                         thickness = 1.dp,
                         color = Color.White.copy(alpha = 0.10f),
                     )
-                    AppleMusicVolumeRow(controller = controller, modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp))
+                    ImmersiveVolumeRow(controller = controller, modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp))
                 }
                 Spacer(
                     modifier =

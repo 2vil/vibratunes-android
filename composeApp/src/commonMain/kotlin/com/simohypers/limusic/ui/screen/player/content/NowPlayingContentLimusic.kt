@@ -1,6 +1,6 @@
 package com.simohypers.limusic.ui.screen.player.content
 
-import com.simohypers.limusic.ui.screen.player.content.applemusic.CoverLyricLine
+import com.simohypers.limusic.ui.screen.player.content.immersive.CoverLyricLine
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -119,7 +119,7 @@ import com.simohypers.limusic.ui.component.doubleTapToLike
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AudioOutputSheetHost
+import com.simohypers.limusic.ui.screen.player.content.immersive.AudioOutputSheetHost
 import com.simohypers.limusic.ui.screen.player.content.expressive.WavySeekBar
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.UIEvent
@@ -150,7 +150,7 @@ private val COVER_GAP = 12.dp
  * The Classic full player, the default: a large cover with the current lyric line under it, title
  * and artist with like, the wavy seek bar, a row of rounded transport buttons, and a
  * row of squares at the bottom (Queue, Lyrics and the rest), the audio output top right. Queue and Lyrics are views of the same
- * page, like the Apple Music style's: they take the cover's place and the controls stay put.
+ * page, like the Immersive style's: they take the cover's place and the controls stay put.
  * Colours are the app's own (the cover's with Adapt colors to artwork on), over the cover itself,
  * frosted.
  */
@@ -164,7 +164,7 @@ fun NowPlayingContentLimusic(
 
 /**
  * Classic's Lyrics view as a page of its own: what M3 Expressive opens for fullscreen lyrics
- * (Apple Music has its own lyrics view). The seek bar and pills come with it, the row of squares doesn't; [onClose] closes it.
+ * (Immersive has its own lyrics view). The seek bar and pills come with it, the row of squares doesn't; [onClose] closes it.
  */
 @Composable
 internal fun ClassicLyricsPage(

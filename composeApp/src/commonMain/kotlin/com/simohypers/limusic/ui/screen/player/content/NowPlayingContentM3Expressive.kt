@@ -1,6 +1,6 @@
 package com.simohypers.limusic.ui.screen.player.content
 
-import com.simohypers.limusic.ui.screen.player.content.applemusic.CoverLyricLine
+import com.simohypers.limusic.ui.screen.player.content.immersive.CoverLyricLine
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -115,7 +115,7 @@ import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
 import com.simohypers.limusic.ui.icon.Shuffle
 import com.simohypers.limusic.ui.icon.LimusicIcons
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AudioOutputSheetHost
+import com.simohypers.limusic.ui.screen.player.content.immersive.AudioOutputSheetHost
 import com.simohypers.limusic.ui.screen.player.content.expressive.ExpressiveTransportRow
 import com.simohypers.limusic.ui.screen.player.content.expressive.WavySeekBar
 import com.simohypers.limusic.ui.theme.LocalArtworkColors
@@ -140,8 +140,8 @@ import limusic.composeapp.generated.resources.now_playing_upper
  * below-the-fold cards, sticky toolbar) mirrors [NowPlayingContentSpotify] one-to-one so
  * both styles behave identically; only the presentation differs.
  *
- * Apple Music's animated artwork plays the Apple Music style's way instead (see
- * [AppleMusicAnimatedArtworkPage]), under controls that never hide.
+ * Apple Music's animated artwork plays the Immersive style's way instead (see
+ * [ImmersiveAnimatedArtworkPage]), under controls that never hide.
  *
  * Canvas mode behaves exactly like Classic: when a Spotify canvas exists the page goes flat
  * black, the canvas plays fullscreen as the bottom layer of the current pager page and the
@@ -954,7 +954,7 @@ private fun ExpressiveConnectedGroup(
             )
         }
         // Output — the phone's own outputs and the Cast receivers in one sheet, the same one the
-        // Apple Music style opens. Every build has outputs to pick, so the slot is never hidden.
+        // Immersive style opens. Every build has outputs to pick, so the slot is never hidden.
         // An active Cast session tints primary, like Classic's cyan.
         ExpressiveConnectedSlot(
             shape = middle,

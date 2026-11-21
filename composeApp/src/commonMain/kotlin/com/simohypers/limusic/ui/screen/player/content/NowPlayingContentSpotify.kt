@@ -149,7 +149,7 @@ import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Subtitles
 import com.simohypers.limusic.ui.icon.SubtitlesOff
 import com.simohypers.limusic.ui.icon.ThumbsUpDown
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AudioOutputSheetHost
+import com.simohypers.limusic.ui.screen.player.content.immersive.AudioOutputSheetHost
 import com.simohypers.limusic.ui.theme.blackMoreOverlay
 import com.simohypers.limusic.ui.theme.overlay
 import com.simohypers.limusic.ui.theme.typo
@@ -804,11 +804,11 @@ fun NowPlayingContentSpotify(
                         }
 
                         // ── Layer 3: Apple Music's animated artwork (current track) ──
-                        // Not a canvas: it plays the Apple Music style's way, edge to edge at the
+                        // Not a canvas: it plays the Immersive style's way, edge to edge at the
                         // top of the page and dissolving into a mesh of its own colours, under
                         // controls that never hide. Covers Layers 0–2 once its still is up.
                         if (pageAnimatedArtwork != null) {
-                            AppleMusicAnimatedArtworkPage(
+                            ImmersiveAnimatedArtworkPage(
                                 canvas = pageAnimatedArtwork,
                                 cover = state.screenData.bitmap,
                                 topChrome = topAppBarHeightDp.dp,
@@ -1051,7 +1051,7 @@ fun NowPlayingContentSpotify(
                                                 Icon(imageVector = LimusicIcons.Info, tint = Color.White, contentDescription = "")
                                             }
                                             // Where the sound goes: the phone's own outputs and the Cast
-                                            // receivers in one sheet, the same one the Apple Music style opens.
+                                            // receivers in one sheet, the same one the Immersive style opens.
                                             // Cyan rather than colorScheme.primary: this screen is force-dark whatever
                                             // the app theme is, so a light-theme primary would sink into the black
                                             // backdrop. Mirrors the `if (forceDark) Color.Cyan` rule in FullWidthItems.
@@ -1272,8 +1272,8 @@ fun NowPlayingContentSpotify(
                                         Spacer(modifier = Modifier.weight(1f))
                                         // Vote button — only when the lyrics or the translation came from
                                         // SimpMusic Lyrics. The rule itself lives on the shared contract
-                                        // (canVote), so a style cannot ship without it the way the Apple
-                                        // Music tab did.
+                                        // (canVote), so a style cannot ship without it the way the
+                                        // Immersive tab did.
                                         if (state.screenData.lyricsData.canVote()) {
                                             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                                                 IconButton(
