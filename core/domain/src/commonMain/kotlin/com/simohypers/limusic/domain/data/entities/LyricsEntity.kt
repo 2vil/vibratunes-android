@@ -29,4 +29,6 @@ data class LyricsEntity(
     val origin: String? = null,
     /** Limusic Lyrics only: who synced a community lyric, oldest first, five at most. */
     val authors: List<String>? = null,
+    /** Limusic Lyrics only: the id the service files it under, this song's or another upload's. */
+    val limusicId: String? = null,
 )

@@ -171,6 +171,9 @@ internal class LyricsCanvasRepositoryImpl(
 
     override suspend fun recheckLyrics(
         videoId: String,
+        title: String,
+        artist: String,
+        durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
     ): Boolean =
         withContext(Dispatchers.IO) {
@@ -180,9 +183,16 @@ internal class LyricsCanvasRepositoryImpl(
             // Stamped before the request leaves, not when it answers: a second look at the song
             // meanwhile finds nothing due, and it makes this one request per song per day at most.
             localDataSource.insertLyrics(cached.copy(fetchedAt = now))
+            // Limusic's own lyric is asked about where it is filed, which needs no name; anything else
+            // asks whether Limusic has the song now, under this id or another upload of it.
+            val filed = cached.limusicId?.takeIf { kind == LyricsRecheck.REVISION }
             val answer =
                 try {
-                    limusic.get(videoId, cached.revision.takeIf { kind == LyricsRecheck.REVISION })
+                    if (filed != null) {
+                        limusic.get(filed, cached.revision)
+                    } else {
+                        limusic.get(videoId, cached.revision.takeIf { kind == LyricsRecheck.REVISION }, title, artist, durationSeconds)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -215,6 +225,7 @@ internal class LyricsCanvasRepositoryImpl(
 
     override suspend fun limusicRating(videoId: String): LimusicRating? =
         withContext(Dispatchers.IO) {
+            val videoId = filedId(videoId)
             val token = limusicToken()
             try {
                 limusic.rating(videoId, token)
@@ -230,13 +241,16 @@ internal class LyricsCanvasRepositoryImpl(
         videoId: String,
         value: Int,
         before: LimusicRating,
-    ): LimusicRating = withContext(Dispatchers.IO) { asContributor { limusic.vote(videoId, value, it, before) } }
+    ): LimusicRating = withContext(Dispatchers.IO) { filedId(videoId).let { id -> asContributor { limusic.vote(id, value, it, before) } } }
 
     override suspend fun limusicReport(
         videoId: String,
         reason: String,
         note: String?,
-    ) = withContext(Dispatchers.IO) { asContributor { limusic.report(videoId, reason, note, it) } }
+    ) = withContext(Dispatchers.IO) { filedId(videoId).let { id -> asContributor { limusic.report(id, reason, note, it) } } }
+
+    /** Where Limusic files the cached lyric, desktop's `filed_id`: another upload of the song, or this one. */
+    private suspend fun filedId(videoId: String) = localDataSource.getSavedLyrics(videoId)?.limusicId ?: videoId
 
     private suspend fun limusicToken() = dataStoreManager.limusicLyricsToken.first().takeIf { it.isNotEmpty() }
 
@@ -304,6 +318,7 @@ internal class LyricsCanvasRepositoryImpl(
             revision = revision,
             origin = origin,
             authors = authors.ifEmpty { null },
+            limusicId = filedId,
         )
 
     override suspend fun forgetLyrics(videoId: String) = withContext(Dispatchers.IO) { localDataSource.deleteLyrics(videoId) }
@@ -317,7 +332,8 @@ internal class LyricsCanvasRepositoryImpl(
     ): LyricsEntity? = toLyrics()?.toLyricsEntity(videoId)?.copy(provider = source.id, fetchedAt = now)
 
     // YouTube Music needs the scraper, which the lyrics module doesn't have; the rest are there.
-    // Limusic goes by video id only, so a title typed in the source sheet skips it.
+    // Limusic goes by video id (and the song's name, for another upload), so a title typed in the
+    // source sheet skips it.
     private suspend fun askLyricsSource(
         source: LyricsSource,
         query: LyricsQuery,
@@ -327,7 +343,11 @@ internal class LyricsCanvasRepositoryImpl(
             LyricsSource.YOUTUBE ->
                 youTube.plainLyrics(query.videoId).getOrThrow()?.takeIf { it.isNotBlank() }?.let(::parseUnsyncedLyrics)?.toEntity(query.videoId, source, now)
             LyricsSource.LIMUSIC ->
-                if (query.searched) null else (limusic.get(query.videoId) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(query.videoId, now)
+                if (query.searched) {
+                    null
+                } else {
+                    (limusic.get(query.videoId, null, query.title, query.artist, query.durationSeconds) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(query.videoId, now)
+                }
             else -> lyricsProviders.ask(source.id, query)?.toEntity(query.videoId, source, now)
         }
 
