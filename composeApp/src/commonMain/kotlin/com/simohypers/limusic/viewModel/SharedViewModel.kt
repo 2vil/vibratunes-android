@@ -291,7 +291,7 @@ class SharedViewModel(
                                 }
                                 nowPlaying.songEntity?.let { song ->
                                     if (nowPlayingScreenData.value.lyricsData == null) {
-                                        loadLyrics(song, (timeline.total / 1000).toInt())
+                                        loadLyrics(song, ((timeline.total + 500) / 1000).toInt())
                                     }
                                 }
                             }
@@ -702,7 +702,7 @@ class SharedViewModel(
             if (_nowPlayingState.value?.songEntity?.videoId != song.videoId) return@launch
             showLyrics(song.videoId, entity)
             // A cached lyric is shown at once and brought up to date behind it (Limusic Lyrics).
-            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, order)) {
+            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, song.title, artist, durationSeconds, order)) {
                 val fresh = fetch()
                 if (_nowPlayingState.value?.songEntity?.videoId == song.videoId) showLyrics(song.videoId, fresh)
             }
@@ -753,7 +753,7 @@ class SharedViewModel(
             title = title ?: song.title,
             artist = artist ?: lyricsArtist(song),
             album = if (title == null) song.albumName else null,
-            durationSeconds = (timeline.value.total / 1000).toInt(),
+            durationSeconds = ((timeline.value.total + 500) / 1000).toInt(),
             searched = title != null,
         )
     }
@@ -789,7 +789,7 @@ class SharedViewModel(
                 lyricsCanvasRepository.forgetLyrics(song.videoId)
                 _lyricsMissFor.value = null
                 _nowPlayingScreenData.update { it.copy(lyricsData = null) }
-                loadLyrics(song, (timeline.value.total / 1000).toInt())
+                loadLyrics(song, ((timeline.value.total + 500) / 1000).toInt())
             }
         }
     }

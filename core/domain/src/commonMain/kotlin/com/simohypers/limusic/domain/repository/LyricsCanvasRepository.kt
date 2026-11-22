@@ -50,6 +50,9 @@ interface LyricsCanvasRepository {
      */
     suspend fun recheckLyrics(
         videoId: String,
+        title: String,
+        artist: String,
+        durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
     ): Boolean
 
