@@ -1,8 +1,7 @@
 package com.simohypers.limusic.ui.component
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Box
@@ -35,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +54,7 @@ import com.simohypers.limusic.ui.component.lyrics.BreakNote
 import com.simohypers.limusic.ui.component.lyrics.LyricsGlide
 import com.simohypers.limusic.ui.component.lyrics.SCROLL_LEAD_MS
 import com.simohypers.limusic.ui.component.lyrics.SungWords
-import com.simohypers.limusic.ui.component.lyrics.UNSUNG_ALPHA
+import com.simohypers.limusic.ui.component.lyrics.LyricLevels
 import com.simohypers.limusic.ui.component.lyrics.rememberSweepPlayhead
 import com.simohypers.limusic.ui.screen.player.content.ClassicLyricsPage
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
@@ -73,17 +71,12 @@ import kotlin.math.max
 /** How far into a tapped line the seek lands; under anything heard, over the seek's rounding. */
 private const val SEEK_INTO_LINE_MS = 50L
 
-/**
- * How lines not being sung read. One coming up is exactly as strong as the unsung words of the
- * line being sung ([UNSUNG_ALPHA]), so a line that begins doesn't blink; a line already sung is
- * dimmer than both.
- */
-private const val PAST_LINE_ALPHA = 0.35f
-
 /** Every line but the one being sung sits a step smaller, so that one grows into place. */
 private const val RESTING_SCALE = 0.96f
-private const val LINE_MS = 500
-private val LineEase = CubicBezierEasing(0.2f, 0.7f, 0.3f, 1f)
+
+// A line's strength settles without overshoot; its size with a touch of give.
+private val FadeSpring = spring<Float>(dampingRatio = 1f, stiffness = 120f)
+private val GrowSpring = spring<Float>(dampingRatio = 0.75f, stiffness = 160f)
 
 /**
  * The sheet's lines as they are rendered. A timed line with nothing sung (an instrumental break, as
@@ -312,8 +305,7 @@ fun LyricsView(
         }
     }
     val playhead = rememberSweepPlayhead({ lyricsMs() }, running = playing && syncType == "RICH_SYNCED")
-    // A glow on a light page is a dark smudge, so held notes glow only on a dark one.
-    val halo = ink.luminance() > 0.5f
+    val levels = remember(ink) { LyricLevels(ink) }
 
     val syncedTranslatedWordsByLineIndex =
         remember(displayLines, lyricsData.translatedLyrics?.first?.lines) {
@@ -378,7 +370,7 @@ fun LyricsView(
                     playing = playing,
                     textScale = textScale,
                     ink = ink,
-                    halo = halo,
+                    levels = levels,
                     onClick = if (plain) null else ({ seekToLine(line) }),
                     modifier = Modifier.graphicsLayer { translationY = glide.offsetPx(index) },
                 )
@@ -394,11 +386,11 @@ fun LyricsView(
 }
 
 /**
- * One line, as desktop Limusic draws it: the heading face, bold, on its singer's side. The line
- * being sung is full strength the moment it begins, so its unsung words read exactly as they did a
- * frame earlier as the line coming up, and only what is sung brightens; it grows from a step smaller
- * into place. Dimming is the line's alpha, so a word-timed line's sweep and its romanization fade
- * with it, and only the way out fades.
+ * One line, as desktop Limusic draws it: the heading face, bold, on its singer's side. Lines not
+ * being sung are dimmed as a whole (the line's alpha, so a sweep and a romanization fade with it).
+ * The sung line wakes: its words not sung yet start at the strength they had as the line coming up
+ * and brighten to [LyricLevels.unsung], so it stands out whole without a blink, and it grows from a
+ * step smaller into place.
  */
 @Composable
 private fun LyricLine(
@@ -417,7 +409,7 @@ private fun LyricLine(
     playing: Boolean,
     textScale: Float,
     ink: Color,
-    halo: Boolean,
+    levels: LyricLevels,
     onClick: (() -> Unit)?,
     modifier: Modifier,
 ) {
@@ -427,13 +419,14 @@ private fun LyricLine(
                 when {
                     plain -> 0.9f
                     isCurrent -> 1f
-                    isPast -> PAST_LINE_ALPHA
-                    else -> UNSUNG_ALPHA
+                    isPast -> levels.past
+                    else -> levels.upcoming
                 },
-            animationSpec = tween(LINE_MS, easing = LineEase),
+            animationSpec = FadeSpring,
             label = "lyricLineAlpha",
         )
-    val scale = animateFloatAsState(if (isCurrent || plain) 1f else RESTING_SCALE, tween(LINE_MS, easing = LineEase), label = "lyricLineScale")
+    val wake = animateFloatAsState(if (isCurrent) levels.unsung else levels.upcoming, FadeSpring, label = "lyricLineWake")
+    val scale = animateFloatAsState(if (isCurrent || plain) 1f else RESTING_SCALE, GrowSpring, label = "lyricLineScale")
     val size = (if (plain) 18.sp else 26.sp) * textScale
     val style =
         typo().headlineLarge.copy(
@@ -451,7 +444,8 @@ private fun LyricLine(
         modifier
             .fillMaxWidth()
             .graphicsLayer {
-                alpha = if (isCurrent) 1f else faded.value
+                // A word-timed line carries its own strength in its words while it is sung.
+                alpha = if (isCurrent && (lead != null || background != null)) 1f else faded.value
                 scaleX = scale.value
                 scaleY = scale.value
                 transformOrigin = TransformOrigin(if (far) 1f else 0f, 0.5f)
@@ -464,13 +458,13 @@ private fun LyricLine(
             lead != null || background != null ->
                 // Word order follows the original; subtitles share its edge but keep their own direction.
                 CompositionLocalProvider(LocalLayoutDirection provides lineDirection) {
-                    if (lead != null) SungWords(lead, isCurrent, playhead, style, ink, halo, far = far)
+                    if (lead != null) SungWords(lead, isCurrent, playhead, style, ink, levels.dark, { wake.value }, far = far)
                     if (background != null) {
                         // Dimmed as a group (graphicsLayer alpha), never by a translucent colour, which
                         // composites glyph by glyph and brightens wherever two glyphs overlap.
                         val sub = size * BACKGROUND_VOCALS_SCALE
                         Box(Modifier.padding(top = 2.dp).graphicsLayer { alpha = BACKGROUND_VOCALS_ALPHA }) {
-                            SungWords(background, isCurrent, playhead, style.copy(fontSize = sub, lineHeight = sub * 1.3f), ink, halo = false, far = far)
+                            SungWords(background, isCurrent, playhead, style.copy(fontSize = sub, lineHeight = sub * 1.3f), ink, glow = false, unsung = { wake.value }, far = far)
                         }
                     }
                 }

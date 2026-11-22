@@ -43,4 +43,16 @@ class LyricMotionTest {
         assertEquals(0.5f, progress(1_000, 2_000, 1_500))
         assertEquals(1f, progress(1_000, 1_000, 1_000))
     }
+
+    @Test
+    fun aQuickerRowStaysAheadOfASlowerOne() {
+        // The page scrolls on the quickest row's spring and every other row draws itself back by
+        // the difference, which only works if no row ever gets ahead of the quickest.
+        for (t in 0..1_200 step 20) {
+            assertTrue(springStep(t.toFloat(), 770f) >= springStep(t.toFloat(), 1_000f), "at $t ms")
+        }
+        assertEquals(0f, springStep(0f, 800f))
+        assertEquals(1f, springStep(800f, 800f))
+        assertTrue(springStep(400f, 800f) in 0.8f..0.9f, "most of the way by half time")
+    }
 }
