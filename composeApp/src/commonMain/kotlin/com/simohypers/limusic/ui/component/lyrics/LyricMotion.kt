@@ -10,8 +10,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.EaseOut
-import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -28,10 +29,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -53,19 +56,24 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.simohypers.limusic.extension.ParsedRichSyncLine
 import java.text.BreakIterator
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
@@ -73,9 +81,6 @@ import kotlin.math.roundToLong
 
 // How a synced lyric moves, on the lyrics page and in the line under the cover. Desktop's
 // lyricmotion.ts (1.4.0), whose numbers are Better Lyrics' defaults (@braccato/core, MIT).
-
-/** How much of the ink a word not sung yet keeps: clearly dimmer than a sung one (desktop #720). */
-internal const val UNSUNG_ALPHA = 0.55f
 
 /** A word the source gave no end runs this long when nothing comes after it. */
 internal const val LAST_WORD_FALLBACK_MS = 600L
@@ -181,8 +186,21 @@ internal fun glowing(
     ms: Long,
 ): Boolean = ms >= letterStartMs && ms < noteEndMs + 150
 
-/** The page's scroll easing: a slow start, a quick middle, a long settle. */
-internal val ScrollEase = CubicBezierEasing(0.86f, 0f, 0.2f, 1f)
+/**
+ * A critically damped spring's way from 0 to 1, settled (99%) at [ms]: it sets off at once and
+ * settles softly, never past 1, so a row that is ahead of another stays ahead.
+ */
+internal fun springStep(
+    t: Float,
+    ms: Float,
+): Float {
+    if (t <= 0f) return 0f
+    if (t >= ms) return 1f
+    val wt = SPRING_SETTLE * t / ms
+    return 1f - (1f + wt) * exp(-wt)
+}
+
+private const val SPRING_SETTLE = 6.64f
 
 /**
  * How long a line [rel] lines from the one scrolled to takes to get there. The lines ahead of the
@@ -207,9 +225,9 @@ internal const val SCROLL_LEAD_MS = 500L
 private val BASE_MS = scrollMs(0, false)
 
 /**
- * Desktop's lyrics scroll: the page moves so the line sits at [LYRICS_FOCUS], and every line on
- * screen eases from where it was on its own time ([scrollMs]). A glide that starts while one runs
- * adds to it, so lines that come fast keep moving instead of restarting from rest.
+ * The lyrics scroll: the page moves so the line sits at [LYRICS_FOCUS], and every line on screen
+ * springs from where it was on its own time ([scrollMs], desktop's numbers). A glide that starts
+ * while one runs adds to it, so lines that come fast keep moving instead of restarting from rest.
  *
  * A LazyColumn only has the rows it shows, so the list itself scrolls on the curve of the first row
  * to arrive and every row draws itself back ([offsetPx]) by what its own curve hasn't covered yet.
@@ -244,7 +262,7 @@ internal class LyricsGlide {
             nowNanos: Long,
         ): Float {
             if (startNanos < 0) return 0f
-            return ScrollEase.transform(((nowNanos - startNanos) / 1e6f / ms).coerceIn(0f, 1f))
+            return springStep((nowNanos - startNanos) / 1e6f, ms)
         }
     }
 
@@ -396,11 +414,37 @@ private const val SWEEP_SNAP_MS = 500.0
 private const val SWEEP_MAX_EXTRAPOLATION_MS = 250.0
 
 /**
+ * How strong a lyric's words read, by page: light ink is a dark page. The sung line's words not
+ * sung yet are clearly brighter than the lines coming up, so the line being sung stands out whole,
+ * and still clearly dimmer than a sung word (desktop #720's 2.7:1 at least). Lines already sung are
+ * dimmer than the ones coming up. A light page needs more of the ink for the same contrast.
+ */
+@Immutable
+internal class LyricLevels(
+    ink: Color,
+) {
+    /** Dark page: held notes and the word being sung glow. A glow on a light page is a smudge. */
+    val dark = ink.luminance() > 0.5f
+    val unsung = if (dark) 0.58f else 0.68f
+    val upcoming = if (dark) 0.38f else 0.5f
+    val past = if (dark) 0.28f else 0.38f
+}
+
+/** How far a word rises as it is sung, in em; it stays up until its line is done. */
+private const val LIFT_EM = 0.05f
+private val LiftSpring = spring<Float>(dampingRatio = 0.6f, stiffness = 240f)
+
+// The glow on the word being sung: a soft copy of it under a text shadow, following the sweep.
+private const val GLOW_EM = 0.32f
+private const val GLOW_ALPHA = 0.55f
+
+/**
  * A word-synced line's words, wrapping like text. On the line being sung ([active]) each word is lit
- * up to the singer with a soft edge half an em wide and dim after it, and a held note lights,
- * crests and, with [halo] (dark themes only: on a light one a glow is a dark smudge), glows letter
- * by letter. Off it the words are plain [ink], dimmed by the line. [singleLine] keeps them on one
- * row for a marquee.
+ * up to the singer with a soft edge half an em wide, rises a little as it begins and stays up, and
+ * on a dark page glows while it is sung; a held note lights, crests and glows letter by letter.
+ * Words not sung yet read at [unsung] of the [ink] (read when drawn, so it can animate). Off the
+ * sung line the words are plain [ink], dimmed by the line. [singleLine] keeps them on one row for a
+ * marquee.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -410,17 +454,17 @@ internal fun SungWords(
     playhead: State<Long>,
     style: TextStyle,
     ink: Color,
-    halo: Boolean,
+    glow: Boolean,
+    unsung: () -> Float,
     modifier: Modifier = Modifier,
     far: Boolean = false,
     maxLines: Int = Int.MAX_VALUE,
     singleLine: Boolean = false,
 ) {
-    val dim = ink.copy(alpha = ink.alpha * UNSUNG_ALPHA)
     val gap = with(LocalDensity.current) { (style.fontSize * WORD_GAP_EM).toDp() }
     val words: @Composable () -> Unit = {
         line.words.forEachIndexed { i, w ->
-            SungWord(w.text, w.startTimeMs, line.endOf(i), active, playhead, style, ink, dim, halo)
+            SungWord(w.text, w.startTimeMs, line.endOf(i), active, playhead, style, ink, unsung, glow)
         }
     }
     if (singleLine) {
@@ -442,27 +486,37 @@ private fun SungWord(
     active: Boolean,
     playhead: State<Long>,
     style: TextStyle,
-    lit: Color,
-    dim: Color,
-    halo: Boolean,
+    ink: Color,
+    unsung: () -> Float,
+    glow: Boolean,
 ) {
+    val fontPx = with(LocalDensity.current) { style.fontSize.toPx() }
+    val reached by remember(active, playhead, startMs) { derivedStateOf { active && playhead.value >= startMs } }
+    val lift = animateFloatAsState(if (reached) 1f else 0f, LiftSpring, label = "wordLift")
     val held = remember(text, startMs, endMs) { heldLetters(text, startMs, endMs) }
-    if (held == null) {
-        SweptText(text, startMs, endMs, active, playhead, style, lit, dim)
-        return
-    }
-    // A held word is its letters whether its line is sung or not, so it never reflows when the line
-    // begins. Left to right inside a right-to-left line too: only left-to-right scripts split.
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Row {
-            for (l in held) HeldLetter(l, endMs, active, playhead, style, lit, dim, halo)
+    Box(Modifier.graphicsLayer { translationY = -lift.value * LIFT_EM * fontPx }) {
+        if (held == null) {
+            SweptText(text, startMs, endMs, active, playhead, style, ink, unsung, glow)
+        } else {
+            // A held word is its letters whether its line is sung or not, so it never reflows when
+            // the line begins. Left to right inside a right-to-left line too: only left-to-right
+            // scripts split.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Row {
+                    for (l in held) HeldLetter(l, endMs, active, playhead, style, ink, unsung, glow)
+                }
+            }
         }
     }
 }
 
 private enum class Phase { UNSUNG, SINGING, SUNG }
 
-/** One run of text: dim before its time, swept during it, lit after; plain [lit] off the sung line. */
+/**
+ * One run of text: dim before its time, swept during it, lit after; plain [ink] off the sung line.
+ * With [glow] the run glows while it is sung, the glow cut at the sweep's front so it travels with
+ * the singer, and lets go slowly once the run is sung.
+ */
 @Composable
 private fun SweptText(
     text: String,
@@ -471,9 +525,9 @@ private fun SweptText(
     active: Boolean,
     playhead: State<Long>,
     style: TextStyle,
-    lit: Color,
-    dim: Color,
-    onLayout: ((TextLayoutResult) -> Unit)? = null,
+    ink: Color,
+    unsung: () -> Float,
+    glow: Boolean,
 ) {
     // Read off the playhead only when it changes, so a line recomposes as its words begin and end,
     // not every frame. Only the word being sung reads the playhead per frame, in its draw.
@@ -488,41 +542,74 @@ private fun SweptText(
             }
         }
     }
+    val textStyle = style.copy(textDirection = TextDirection.Content)
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val featherPx = with(LocalDensity.current) { style.fontSize.toPx() } * FEATHER_EM
-    Text(
+    val fontPx = with(LocalDensity.current) { style.fontSize.toPx() }
+    val featherPx = fontPx * FEATHER_EM
+    val glowing = glow && phase == Phase.SINGING
+    val glowAlpha = animateFloatAsState(if (glowing) 1f else 0f, tween(if (glowing) 150 else 800, easing = EaseOut), label = "wordGlow")
+    // The glow's own layout: a paragraph keeps the last paint it was drawn with, so sharing the
+    // word's would leave its shadow (or its clear ink) on the word.
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val glowLayout = if (glow) remember(text, textStyle) { measurer.measure(text, textStyle, maxLines = 1, softWrap = false) } else null
+
+    fun front(width: Float): Float {
+        val p = progress(startMs, endMs, playhead.value)
+        return p * width + p * featherPx
+    }
+    BasicText(
         text = text,
-        style = style.copy(textDirection = TextDirection.Content),
-        color = if (phase == Phase.UNSUNG) dim else lit,
+        style = textStyle,
         maxLines = 1,
         softWrap = false,
-        onTextLayout = {
-            layout = it
-            onLayout?.invoke(it)
-        },
+        onTextLayout = { layout = it },
+        color = { if (phase == Phase.UNSUNG) ink.copy(alpha = ink.alpha * unsung()) else ink },
         modifier =
-            if (phase != Phase.SINGING) {
-                Modifier
-            } else {
-                Modifier.drawWithContent {
-                    val measured = layout ?: return@drawWithContent drawContent()
-                    val p = progress(startMs, endMs, playhead.value)
-                    val w = size.width
-                    // The lit stop runs from one feather before the word to its end, the dim stop
-                    // from its start to one feather after, so the edge is always a feather wide and
-                    // nothing shows lit at p = 0.
-                    val litEnd = p * w - (1f - p) * featherPx
-                    val dimStart = p * w + p * featherPx
-                    val rtl = measured.getParagraphDirection(0) == ResolvedTextDirection.Rtl
-                    val brush =
-                        if (rtl) {
-                            Brush.horizontalGradient(listOf(lit, dim), startX = w - litEnd, endX = w - dimStart)
-                        } else {
-                            Brush.horizontalGradient(listOf(lit, dim), startX = litEnd, endX = dimStart)
+            Modifier
+                .then(
+                    if (glowLayout == null) {
+                        Modifier
+                    } else {
+                        Modifier.drawBehind {
+                            val a = glowAlpha.value
+                            if (a <= 0f) return@drawBehind
+                            val w = size.width
+                            val rtl = glowLayout.getParagraphDirection(0) == ResolvedTextDirection.Rtl
+                            val reach = if (phase == Phase.SINGING) front(w) else w + featherPx
+                            val big = size.height * 2 + w
+                            clipRect(left = if (rtl) w - reach else -big, top = -big, right = if (rtl) big else reach, bottom = big) {
+                                drawText(glowLayout, color = Color.Transparent, shadow = Shadow(ink.copy(alpha = GLOW_ALPHA * a), blurRadius = GLOW_EM * fontPx))
+                            }
                         }
-                    drawText(measured, brush = brush)
-                }
-            },
+                    },
+                ).then(
+                    if (phase != Phase.SINGING) {
+                        Modifier
+                    } else {
+                        Modifier.drawWithContent {
+                            val measured = layout ?: return@drawWithContent drawContent()
+                            val p = progress(startMs, endMs, playhead.value)
+                            val w = size.width
+                            // The lit stop runs from one feather before the word to its end, the dim
+                            // stop from its start to one feather after, so the edge is always a
+                            // feather wide and nothing shows lit at p = 0.
+                            val litEnd = p * w - (1f - p) * featherPx
+                            val dimStart = front(w)
+                            val dim = ink.copy(alpha = ink.alpha * unsung())
+                            val rtl = measured.getParagraphDirection(0) == ResolvedTextDirection.Rtl
+                            val brush =
+                                if (rtl) {
+                                    Brush.horizontalGradient(listOf(ink, dim), startX = w - litEnd, endX = w - dimStart)
+                                } else {
+                                    Brush.horizontalGradient(listOf(ink, dim), startX = litEnd, endX = dimStart)
+                                }
+                            // alpha 1, said outright: left unset, the paragraph keeps the alpha of
+                            // the dim colour it was last drawn in, and the whole word read grey
+                            // until it was sung.
+                            drawText(measured, brush = brush, alpha = 1f)
+                        }
+                    },
+                ),
     )
 }
 
@@ -536,10 +623,10 @@ private fun crest(t: Float): Float =
     if (t < 0.4f) CrestEase.transform(t / 0.4f) else 1f - CrestEase.transform((t - 0.4f) / 0.6f)
 
 /**
- * A held note's letter: lit on its own share of the note, cresting as it is reached, and on dark
- * themes a halo behind it that builds as the letter lights and lets go slowly once the note ends.
- * The halo is the letter in clear ink under a text shadow, drawn under the letter, never a layer
- * alpha: a layer would cut the bloom off at the letter's box.
+ * A held note's letter: lit on its own share of the note, cresting as it is reached, and on a dark
+ * page a halo behind it that builds as the letter lights and lets go slowly once the note ends.
+ * The halo is the letter in clear ink under a text shadow, drawn under the letter from a layout of
+ * its own, never a layer alpha: a layer would cut the bloom off at the letter's box.
  */
 @Composable
 private fun HeldLetter(
@@ -548,8 +635,8 @@ private fun HeldLetter(
     active: Boolean,
     playhead: State<Long>,
     style: TextStyle,
-    lit: Color,
-    dim: Color,
+    ink: Color,
+    unsung: () -> Float,
     halo: Boolean,
 ) {
     val fontPx = with(LocalDensity.current) { style.fontSize.toPx() }
@@ -564,7 +651,8 @@ private fun HeldLetter(
         derivedStateOf { active && halo && glowing(letter.startMs, noteEndMs, playhead.value) }
     }
     val glow = animateFloatAsState(if (lighting) 1f else 0f, tween(if (lighting) 300 else 1200, easing = EaseOut), label = "heldGlow")
-    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val haloLayout = if (halo) remember(letter.text, style) { measurer.measure(letter.text, style, maxLines = 1, softWrap = false) } else null
     Box(
         Modifier
             .graphicsLayer {
@@ -574,13 +662,12 @@ private fun HeldLetter(
                 scaleY = scaleX
             }.drawBehind {
                 val a = glow.value
-                val measured = layout ?: return@drawBehind
-                if (a <= 0f) return@drawBehind
-                drawText(measured, color = Color.Transparent, shadow = Shadow(lit.copy(alpha = 0.55f * a), blurRadius = 0.18f * fontPx))
-                drawText(measured, color = Color.Transparent, shadow = Shadow(lit.copy(alpha = 0.3f * a), blurRadius = 0.55f * fontPx))
+                if (a <= 0f || haloLayout == null) return@drawBehind
+                drawText(haloLayout, color = Color.Transparent, shadow = Shadow(ink.copy(alpha = 0.55f * a), blurRadius = 0.18f * fontPx))
+                drawText(haloLayout, color = Color.Transparent, shadow = Shadow(ink.copy(alpha = 0.3f * a), blurRadius = 0.55f * fontPx))
             },
     ) {
-        SweptText(letter.text, letter.startMs, letter.endMs, active, playhead, style, lit, dim) { layout = it }
+        SweptText(letter.text, letter.startMs, letter.endMs, active, playhead, style, ink, unsung, glow = false)
     }
 }
 
@@ -627,24 +714,26 @@ internal fun BreakNote(
     )
 }
 
-private val QuintOut = Easing { 1f - (1f - it).let { r -> r * r * r * r * r } }
-private val CubicOut = Easing { 1f - (1f - it).let { r -> r * r * r } }
-private const val HANDOFF_MS = 420
+private val SlideSpring = spring(dampingRatio = 0.85f, stiffness = 320f, visibilityThreshold = IntOffset.VisibilityThreshold)
 
 /**
- * The handoff between two lines in a one-line slot (Better Lyrics' stage): the old line rises away
- * and is gone in 220 ms, out of the way, while the new one rises in from a third of the slot below
- * a beat later and sharpens out of a slight blur ([handoffBlur]) as it settles.
+ * The handoff between two lines in a one-line slot: the old line rises away and is gone in 160 ms,
+ * out of the way, while the new one springs up from a third of the slot below and sharpens out of a
+ * slight blur ([handoffBlur]). The slot changes line a moment early ([SLOT_LEAD_MS]), so this is
+ * over before the first word lights.
  */
 internal fun AnimatedContentTransitionScope<*>.lyricHandoff(): ContentTransform {
     val enter =
-        slideInVertically(tween(HANDOFF_MS, easing = QuintOut)) { (it * 0.35f).toInt() } +
-            fadeIn(tween(300, delayMillis = 70, easing = CubicOut))
+        slideInVertically(SlideSpring) { (it * 0.35f).toInt() } +
+            fadeIn(tween(200, easing = EaseOut))
     val exit =
-        slideOutVertically(tween(HANDOFF_MS, easing = QuintOut)) { -(it * 0.35f).toInt() } +
-            fadeOut(tween(220, easing = LinearEasing))
+        slideOutVertically(SlideSpring) { -(it * 0.35f).toInt() } +
+            fadeOut(tween(160, easing = LinearEasing))
     return (enter togetherWith exit).using(SizeTransform(clip = false))
 }
+
+/** How far ahead of a line a one-line slot changes to it, when the line before is done by then. */
+internal const val SLOT_LEAD_MS = 250L
 
 /** The blur a line comes in out of and goes out into, with [lyricHandoff]. Android 12 and up. */
 @OptIn(ExperimentalAnimationApi::class)
@@ -652,7 +741,7 @@ internal fun AnimatedContentTransitionScope<*>.lyricHandoff(): ContentTransform 
 internal fun AnimatedVisibilityScope.handoffBlur(): Modifier {
     val blur by transition.animateDp(
         transitionSpec = {
-            if (targetState == EnterExitState.Visible) tween(300, delayMillis = 70, easing = CubicOut) else tween(220, easing = LinearEasing)
+            if (targetState == EnterExitState.Visible) tween(220, easing = EaseOut) else tween(160, easing = LinearEasing)
         },
         label = "handoffBlur",
     ) { if (it == EnterExitState.Visible) 0.dp else 3.dp }
