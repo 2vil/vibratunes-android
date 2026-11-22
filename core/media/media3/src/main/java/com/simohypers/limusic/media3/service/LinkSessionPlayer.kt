@@ -135,7 +135,14 @@ internal class LinkSessionPlayer(
     ): ListenableFuture<*> {
         when (seekCommand) {
             Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> deviceLink.remote(LinkRemote.Next)
-            Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> deviceLink.remote(LinkRemote.Previous)
+            Player.COMMAND_SEEK_TO_PREVIOUS -> deviceLink.remote(LinkRemote.Previous)
+            // Always the previous item: the computer's "previous" would restart the song past 3 s.
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                val q = link.playerQueue
+                val at = q?.current?.minus(1) ?: -1
+                val row = q?.items?.getOrNull(at)
+                deviceLink.remote(if (q != null && q.offset >= 0 && row != null) LinkRemote.PlayIndex(q.offset + at, row.track.id) else LinkRemote.Previous)
+            }
             Player.COMMAND_SEEK_TO_MEDIA_ITEM, Player.COMMAND_SEEK_TO_DEFAULT_POSITION -> {
                 val q = link.playerQueue
                 val row = q?.items?.getOrNull(mediaItemIndex)
