@@ -1322,7 +1322,6 @@ class SharedViewModel(
 
     fun getNowPlayingStyle() = dataStoreManager.nowPlayingStyle
 
-    fun getLyricsStyle() = dataStoreManager.lyricsStyle
 
     fun getLyricsOffsetMs() = dataStoreManager.lyricsOffsetMs
 
@@ -1350,11 +1349,6 @@ class SharedViewModel(
         }
     }
 
-    fun setLyricsStyle(style: String) {
-        viewModelScope.launch {
-            dataStoreManager.setLyricsStyle(style)
-        }
-    }
 
     fun getRomanizationLanguages() = dataStoreManager.romanizationLanguages
 

@@ -307,9 +307,6 @@
     <string name="theme_mode_light">Light</string>
     <string name="now_playing_style_spotify">Classic</string>
     <string name="now_playing_style_immersive">Immersive</string>
-    <string name="lyrics_style">Lyrics style</string>
-    <string name="lyrics_style_classic">Classic</string>
-    <string name="lyrics_style_immersive">Immersive</string>
     <string name="requires_android_12" translatable="false">Android 12+</string>
     <string name="lyrics_offset">Lyrics timing offset</string>
     <string name="lyrics_offset_message">Shift every lyric line by this many milliseconds. Use a positive number when you hear the audio later than you see it, which is what Bluetooth headphones do, and a negative number to make the lyrics appear earlier.</string>

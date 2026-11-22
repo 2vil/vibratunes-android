@@ -674,7 +674,7 @@ internal fun ExpressiveBelowTheFold(
                                 onLineClick = { f ->
                                     actions.onUIEvent(UIEvent.UpdateProgress(f))
                                 },
-                                backgroundColor = colorScheme.surfaceContainer,
+                                playing = state.controllerState.isPlaying,
                             )
                         }
                     }
