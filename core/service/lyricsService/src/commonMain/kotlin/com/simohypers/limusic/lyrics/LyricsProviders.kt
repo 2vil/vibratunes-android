@@ -126,7 +126,10 @@ class LyricsProviders {
                     words =
                         l["syllabus"].arr
                             .takeIf { wordTimed && it.isNotEmpty() }
-                            ?.map { LyricWord(it["text"].str.orEmpty(), it["time"].num?.toLong() ?: time) },
+                            ?.map { w ->
+                                val at = w["time"].num?.toLong() ?: time
+                                LyricWord(w["text"].str.orEmpty(), at, endMs = w["duration"].num?.toLong()?.let { at + it })
+                            },
                 )
             }
         return Found(lines)
@@ -344,6 +347,8 @@ internal data class LyricWord(
     val startMs: Long,
     /** Background vocals. Only Limusic Lyrics marks them. */
     val bg: Boolean = false,
+    /** When the singer lets go of it; null when the source only times starts. */
+    val endMs: Long? = null,
 )
 
 /** One display line; [timeMs] null when the lyrics are plain. */
@@ -406,24 +411,39 @@ private fun line(
 /**
  * Apple times syllables ("beau", "ti", "ful "), and the view draws one run per word with a space
  * between runs. So syllables join into words, a word ending where a syllable ends in whitespace,
- * and the word starts with its first syllable.
+ * and the word starts with its first syllable. A word that ends before the next one starts carries
+ * its end as a stamp with nothing after it (`<00:01.500>Hello<00:02.100> <00:02.400>world`), so the
+ * view stops its sweep with the singer and knows a held note from a word before a pause.
  */
-internal fun List<LyricWord>.toRichSync(): String =
-    buildString {
-        var wordEnded = true
-        for (w in this@toRichSync) {
-            if (w.text.isBlank()) {
-                wordEnded = true
-                continue
-            }
-            if (wordEnded || w.text.first().isWhitespace()) {
-                if (isNotEmpty()) append(' ')
-                append(richStamp(w.startMs))
-            }
-            append(w.text.trim())
-            wordEnded = w.text.last().isWhitespace()
+internal fun List<LyricWord>.toRichSync(): String {
+    // Each word's first syllable, and when its last one ends.
+    val starts = mutableListOf<Long>()
+    val texts = mutableListOf<StringBuilder>()
+    val ends = mutableListOf<Long?>()
+    var wordEnded = true
+    for (w in this) {
+        if (w.text.isBlank()) {
+            wordEnded = true
+            continue
+        }
+        if (wordEnded || w.text.first().isWhitespace()) {
+            starts += w.startMs
+            texts += StringBuilder()
+            ends += null
+        }
+        texts.last().append(w.text.trim())
+        ends[ends.lastIndex] = w.endMs
+        wordEnded = w.text.last().isWhitespace()
+    }
+    return buildString {
+        for (i in starts.indices) {
+            if (i > 0) append(' ')
+            append(richStamp(starts[i])).append(texts[i])
+            val end = ends[i]
+            if (end != null && end > starts[i] && end != starts.getOrNull(i + 1)) append(richStamp(end))
         }
     }
+}
 
 private fun richStamp(ms: Long): String {
     fun pad(v: Long, n: Int) = v.toString().padStart(n, '0')
@@ -538,7 +558,15 @@ internal fun parseElrc(lrc: String): List<LyricLine> =
         }
         runs.last().second.append(rest)
         if (runs.size == 1) return@map line
-        val words = runs.filter { it.second.isNotEmpty() }.map { (ms, text) -> LyricWord(text.toString(), ms) }
+        // A stamp with nothing after it (`<00:11.20>world<00:12.00>`) is when the word before it ends.
+        val words = mutableListOf<LyricWord>()
+        for ((ms, text) in runs) {
+            if (text.isNotBlank()) {
+                words += LyricWord(text.toString(), ms)
+            } else if (words.isNotEmpty() && words.last().endMs == null) {
+                words[words.lastIndex] = words.last().let { it.copy(text = it.text + text, endMs = ms) }
+            }
+        }
         line.copy(text = words.joinToString("") { it.text }.trim(), words = words.ifEmpty { null })
     }
 
@@ -595,8 +623,9 @@ private fun ttmlSpans(
         }
         val close = inner.indexOf("</span>", tagEnd).takeIf { it >= 0 } ?: break
         val wordText = stripTags(inner.substring(tagEnd + 1, close))
-        val begin = xmlAttr(inner.substring(sStart, tagEnd + 1), "begin")?.let(::parseTtmlTime) ?: lineBegin
-        if (begin != null && wordText.isNotEmpty()) words += LyricWord(wordText, begin)
+        val spanTag = inner.substring(sStart, tagEnd + 1)
+        val begin = xmlAttr(spanTag, "begin")?.let(::parseTtmlTime) ?: lineBegin
+        if (begin != null && wordText.isNotEmpty()) words += LyricWord(wordText, begin, endMs = xmlAttr(spanTag, "end")?.let(::parseTtmlTime))
         text.append(wordText)
         pos = close + "</span>".length
     }

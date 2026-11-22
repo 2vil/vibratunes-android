@@ -1,55 +1,27 @@
 package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.MarqueeAnimationMode
-import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.style.ResolvedTextDirection
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simohypers.limusic.domain.data.model.lyrics.RomanizationDictionaryState
@@ -60,27 +32,24 @@ import com.simohypers.limusic.domain.repository.LyricsRomanizerRepository
 import com.simohypers.limusic.extension.ParsedRichSyncLine
 import com.simohypers.limusic.extension.WordTiming
 import com.simohypers.limusic.extension.parseRichSyncWords
+import com.simohypers.limusic.ui.component.lyrics.BreakNote
+import com.simohypers.limusic.ui.component.lyrics.endOf
+import com.simohypers.limusic.ui.component.lyrics.SungWords
+import com.simohypers.limusic.ui.component.lyrics.handoffBlur
+import com.simohypers.limusic.ui.component.lyrics.lyricHandoff
+import com.simohypers.limusic.ui.component.lyrics.rememberSweepPlayhead
 import com.simohypers.limusic.ui.component.rememberLyricLayoutDirection
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentState
 import com.simohypers.limusic.ui.screen.player.content.stripRichSyncTimestamps
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.roundToLong
 import org.koin.compose.koinInject
 
 /**
- * The line being sung, directly over the progress bar. Tapping it opens the Lyrics tab.
- *
- * Word-synced lyrics are lit as they are sung: the line is drawn twice, dim and bright, and the
- * bright copy is clipped to where the singer has got to. Clipping in the draw phase, off a playhead
- * carried forward on the frame clock, is what lets the light travel smoothly INSIDE a word — coloured
- * spans can only change a whole word at a time. Line-synced lyrics light the whole line at once.
- *
- * Before the first line starts the slot holds three dots rather than nothing, so an intro does not
- * leave a gap between the title and the bar.
- *
- * Always one line tall, empty or not, so the controls below it never move when a line ends or a
- * track has no synced lyrics. Follows the Romanized lyric line setting, like [CoverLyricLine].
+ * The line being sung, directly over the progress bar. Tapping it opens the Lyrics tab. One line
+ * tall, scrolling sideways as a marquee when it is longer, and one line tall empty or not, so the
+ * controls below it never move. Before the first line and in an instrumental break it holds a
+ * pulsing note, so an intro doesn't read as a song without lyrics. Follows the Romanized lyric line
+ * setting, like [CoverLyricLine].
  */
 @Composable
 internal fun ImmersiveLyricStrip(
@@ -89,32 +58,12 @@ internal fun ImmersiveLyricStrip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val lyrics = state.screenData.lyricsData?.lyrics
-    val syncType = lyrics?.syncType
-    val synced = lyrics?.lines != null && syncType != null && syncType != "UNSYNCED"
-    val richSynced = synced && syncType == "RICH_SYNCED"
-    // The index is -1 only until the first line starts: once a line has been reached it is held
-    // until the next one, and the last is held to the end of the track.
-    val line = if (synced) lyrics.lines?.getOrNull(state.currentLyricLineIndex) else null
-
-    val playhead =
-        rememberSweepPlayhead(
-            rawMs = state.timelineState.current - state.lyricsOffsetMs,
-            running = line != null && richSynced && state.controllerState.isPlaying,
-        )
-    val reading = rememberReading()
-
-    AnimatedContent(
-        // Keyed on the line itself: the index alone would miss a lyrics swap that lands on the same
-        // index, and the text alone would merge two identical lines sung back to back.
-        targetState =
-            when {
-                line != null -> StripContent.Sung(line)
-                synced -> StripContent.Waiting
-                else -> null
-            },
-        transitionSpec = { lineRise() },
-        label = "immersiveLyricStrip",
+    val synced = state.lyricsSynced()
+    LyricSlot(
+        state = state,
+        style = typography.lyricStrip,
+        color = typography.lyricStrip.color,
+        lines = 1,
         modifier =
             modifier
                 .fillMaxWidth()
@@ -123,80 +72,15 @@ internal fun ImmersiveLyricStrip(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
-                ),
-    ) { shown ->
-        val sung = (shown as? StripContent.Sung)?.line
-        val roman = remember(sung, reading) { sung?.let { reading(it.displayText()) } }
-        val lineText = roman ?: sung?.displayText().orEmpty()
-        val lineDirection = rememberLyricLayoutDirection(lineText)
-        CompositionLocalProvider(LocalLayoutDirection provides lineDirection) {
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
-                // Every branch starts from a one-line Text, which is what keeps the slot the same height.
-                when (shown) {
-                    is StripContent.Sung -> {
-                        val parsed =
-                            remember(shown.line, richSynced, roman) {
-                                if (richSynced) shown.line.parsed(roman) else null
-                            }
-                        if (parsed != null) {
-                            SweptLine(parsed = parsed, playhead = playhead, style = typography.lyricStrip, unsung = UNSUNG)
-                        } else {
-                            StripText(text = lineText, typography = typography)
-                        }
-                    }
-
-                    StripContent.Waiting -> {
-                        StripText(text = "", typography = typography)
-                        WaitingDots()
-                    }
-
-                    null -> StripText(text = "", typography = typography)
-                }
-            }
-        }
-    }
-}
-
-// What the strip is showing: a line being sung, or the wait before the first one.
-private sealed interface StripContent {
-    data class Sung(
-        val line: Line,
-    ) : StripContent
-
-    data object Waiting : StripContent
-}
-
-@Composable
-private fun StripText(
-    text: String,
-    typography: ImmersiveTypography,
-) {
-    Text(
-        text = text,
-        style = typography.lyricStrip.copy(textDirection = TextDirection.ContentOrLtr),
-        maxLines = 1,
-        softWrap = false,
-        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately),
+                ).padding(horizontal = 20.dp),
     )
-}
-
-// Three dots in a row, centred on the line's height by the Box around them.
-@Composable
-private fun WaitingDots() {
-    Row(horizontalArrangement = Arrangement.spacedBy(WAITING_DOT_GAP)) {
-        repeat(3) {
-            Box(modifier = Modifier.size(WAITING_DOT_SIZE).clip(CircleShape).background(UNSUNG))
-        }
-    }
 }
 
 /**
  * The line being sung under the cover, in the Classic and M3 Expressive players: two lines tall
- * whatever it holds, in the theme's colours. Word-synced lyrics light as they are sung, the way
- * the Immersive strip lights them, and a new line rises into place as the old one rises away.
- * Line-synced lyrics show the whole line. [hidden] empties it (M3 Expressive under a fullscreen canvas).
- * With Romanized lyric line on (Settings > Appearance > Player) a line with a reading shows that
- * instead: two lines hold one script, not both.
+ * whatever it holds, a one-line lyric in the middle of it, in the theme's colours. [hidden] empties
+ * it (M3 Expressive under a fullscreen canvas). With Romanized lyric line on (Settings > Appearance >
+ * Player) a line with a reading shows that instead: two lines hold one script, not both.
  */
 @Composable
 internal fun CoverLyricLine(
@@ -206,193 +90,107 @@ internal fun CoverLyricLine(
     modifier: Modifier = Modifier,
     hidden: Boolean = false,
 ) {
+    LyricSlot(state, style, color, lines = 2, hidden = hidden, modifier = modifier.fillMaxWidth())
+}
+
+private fun NowPlayingContentState.lyricsSynced(): Boolean {
+    val lyrics = screenData.lyricsData?.lyrics
+    return lyrics?.lines != null && lyrics.syncType != null && lyrics.syncType != "UNSYNCED"
+}
+
+// What a slot shows: a line being sung, or the note before the first line and in a break.
+private sealed interface Slot {
+    data class Sung(
+        val line: Line,
+    ) : Slot
+
+    data object Waiting : Slot
+}
+
+/**
+ * Desktop's CoverLyric: word-synced lines light as they are sung, the way the lyrics page lights
+ * them (a held note crests, and on a dark player glows); line-synced ones show whole. A new line
+ * comes in with [lyricHandoff]. Background vocals stay on the lyrics page, where they have a line of
+ * their own; a line that is nothing but them sweeps them, or it would show empty.
+ */
+@Composable
+private fun LyricSlot(
+    state: NowPlayingContentState,
+    style: TextStyle,
+    color: Color,
+    lines: Int,
+    modifier: Modifier,
+    hidden: Boolean = false,
+) {
     val lyrics = state.screenData.lyricsData?.lyrics
-    val syncType = lyrics?.syncType
-    val synced = lyrics?.lines != null && syncType != null && syncType != "UNSYNCED"
-    val richSynced = synced && syncType == "RICH_SYNCED"
-    val line = if (synced && !hidden) lyrics.lines?.getOrNull(state.currentLyricLineIndex) else null
+    val synced = state.lyricsSynced() && !hidden
+    val richSynced = synced && lyrics?.syncType == "RICH_SYNCED"
+    // The index is -1 only until the first line starts: once a line has been reached it is held
+    // until the next one, and the last is held to the end of the track.
+    val line = if (synced) lyrics?.lines?.getOrNull(state.currentLyricLineIndex)?.takeIf { it.hasWords() } else null
+    val playing = state.controllerState.isPlaying
     val playhead =
         rememberSweepPlayhead(
-            rawMs = state.timelineState.current - state.lyricsOffsetMs,
-            running = line != null && richSynced && state.controllerState.isPlaying,
+            rawMs = { state.timelineState.current - state.lyricsOffsetMs },
+            running = line != null && richSynced && playing,
         )
     val reading = rememberReading()
-    AnimatedContent(targetState = line, transitionSpec = { lineRise() }, label = "coverLyricLine", modifier = modifier.fillMaxWidth()) { shown ->
-        val roman = remember(shown, reading) { shown?.let { reading(it.displayText()) } }
-        val lineText = roman ?: shown?.displayText().orEmpty()
-        val parsed = remember(shown, richSynced, roman) { if (richSynced) shown?.parsed(roman) else null }
+    val halo = color.luminance() > 0.5f
+    val single = lines == 1
+    AnimatedContent(
+        // Keyed on the line itself: the index alone would miss a lyrics swap that lands on the same
+        // index, and the text alone would merge two identical lines sung back to back.
+        targetState =
+            when {
+                line != null -> Slot.Sung(line)
+                synced -> Slot.Waiting
+                else -> null
+            },
+        transitionSpec = { lyricHandoff() },
+        label = "lyricSlot",
+        modifier = modifier,
+    ) { shown ->
+        val sung = (shown as? Slot.Sung)?.line
+        val roman = remember(sung, reading) { sung?.let { reading(it.displayText()) } }
+        val lineText = roman ?: sung?.displayText().orEmpty()
+        val parsed = remember(sung, richSynced, roman) { if (richSynced) sung?.parsed(roman) else null }
         val lineDirection = rememberLyricLayoutDirection(lineText)
-        CompositionLocalProvider(LocalLayoutDirection provides lineDirection) {
-            if (parsed != null) {
-                SweptLine(parsed, playhead, style.copy(color = color), unsung = color.copy(alpha = UNSUNG_ALPHA), maxLines = 2)
-            } else {
-                Text(
-                    text = lineText,
-                    style = style.copy(color = color, textDirection = TextDirection.ContentOrLtr),
-                    maxLines = 2,
-                    minLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-// The new line rises into place as the old one rises away, a third of a line each way: the
-// direction lyrics travel in the Lyrics tab, so the two read as the same motion.
-private fun AnimatedContentTransitionScope<*>.lineRise(): ContentTransform {
-    val enter =
-        fadeIn(tween(LINE_CHANGE_MS, easing = FastOutSlowInEasing)) +
-            slideInVertically(tween(LINE_CHANGE_MS, easing = FastOutSlowInEasing)) { (it * 0.35f).toInt() }
-    val exit =
-        fadeOut(tween(LINE_CHANGE_MS, easing = FastOutSlowInEasing)) +
-            slideOutVertically(tween(LINE_CHANGE_MS, easing = FastOutSlowInEasing)) { -(it * 0.35f).toInt() }
-    return (enter togetherWith exit).using(SizeTransform(clip = false))
-}
-
-/**
- * A word-synced line drawn twice, [unsung] and lit, the lit copy clipped to where the singer has
- * got to. One line scrolls sideways as a marquee (the Immersive strip); more wrap, every line
- * above the sung one lit in full, and always take [maxLines] of height so nothing below moves.
- */
-@Composable
-private fun SweptLine(
-    parsed: ParsedRichSyncLine,
-    playhead: State<Long>,
-    style: TextStyle,
-    unsung: Color,
-    maxLines: Int = 1,
-) {
-    // The words joined the way the line is shown, with each word's character range kept, so the
-    // playhead can be turned into an x position on the laid-out text.
-    val text = remember(parsed) { parsed.words.joinToString(" ") { it.text } }
-    val ranges =
-        remember(parsed) {
-            var start = 0
-            parsed.words.map { word ->
-                val range = start until start + word.text.length
-                start += word.text.length + 1
-                range
-            }
-        }
-    var layout by remember(text) { mutableStateOf<TextLayoutResult?>(null) }
-    val single = maxLines == 1
-    // The marquee sits on the Box, not on each Text, so the dim and bright copies scroll as one and
-    // the sweep stays over the word it belongs to.
-    Box(modifier = if (single) Modifier.basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately) else Modifier.fillMaxWidth()) {
-        Text(
-            text = text,
-            style = style.copy(color = unsung, textDirection = TextDirection.ContentOrLtr),
-            maxLines = maxLines,
-            minLines = maxLines,
-            softWrap = !single,
-            overflow = if (single) TextOverflow.Clip else TextOverflow.Ellipsis,
-            onTextLayout = { layout = it },
-        )
-        Text(
-            text = text,
-            style = style.copy(textDirection = TextDirection.ContentOrLtr),
-            maxLines = maxLines,
-            minLines = maxLines,
-            softWrap = !single,
-            overflow = if (single) TextOverflow.Clip else TextOverflow.Ellipsis,
-            modifier =
-                Modifier.drawWithContent {
-                    val measured = layout ?: return@drawWithContent
-                    val (row, sweepX) = sweepAt(parsed, ranges, measured, playhead.value) ?: return@drawWithContent
-                    val top = if (row == 0) 0f else measured.getLineTop(row)
-                    val bottom = if (row >= measured.lineCount - 1) size.height else measured.getLineBottom(row)
-                    val rtl = measured.getParagraphDirection(0) == ResolvedTextDirection.Rtl
-                    val lit =
-                        Path().apply {
-                            if (top > 0f) addRect(Rect(0f, 0f, size.width, top))
-                            addRect(if (rtl) Rect(sweepX, top, size.width, bottom) else Rect(0f, top, sweepX, bottom))
+        // The empty text is what holds the slot's height, whatever is in it.
+        Box(Modifier.fillMaxWidth().then(handoffBlur()), contentAlignment = Alignment.CenterStart) {
+            Text("", style = style, minLines = lines, maxLines = lines)
+            CompositionLocalProvider(LocalLayoutDirection provides lineDirection) {
+                when {
+                    shown == Slot.Waiting -> BreakNote(active = true, playing = playing, style = style, color = color)
+                    parsed != null && single ->
+                        // The marquee is on the Box, so the words scroll as one row.
+                        Box(Modifier.basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)) {
+                            SungWords(parsed, active = true, playhead, style, color, halo, singleLine = true)
                         }
-                    clipPath(lit) { this@drawWithContent.drawContent() }
-                },
-        )
-    }
-}
-
-// Where the light has got to, as the row it is on and its x there: every word already sung, plus
-// the part of the current one its own duration says has gone by. A word runs until the next one
-// starts; the last runs to the line's end.
-private fun sweepAt(
-    parsed: ParsedRichSyncLine,
-    ranges: List<IntRange>,
-    layout: TextLayoutResult,
-    positionMs: Long,
-): Pair<Int, Float>? {
-    val words = parsed.words
-    val current = words.indexOfLast { it.startTimeMs <= positionMs }
-    if (current < 0) return null
-    val range = ranges[current]
-    val startMs = words[current].startTimeMs
-    val endMs =
-        words.getOrNull(current + 1)?.startTimeMs
-            ?: parsed.lineEndTimeMs.takeIf { it != Long.MAX_VALUE && it > startMs }
-            ?: (startMs + LAST_WORD_FALLBACK_MS)
-    val progress = ((positionMs - startMs).toFloat() / (endMs - startMs).coerceAtLeast(1L)).coerceIn(0f, 1f)
-    val lastIndex = (layout.layoutInput.text.length).coerceAtLeast(1)
-    val first = range.first.coerceIn(0, lastIndex)
-    val left = layout.getHorizontalPosition(first, usePrimaryDirection = true)
-    val right = layout.getHorizontalPosition((range.last + 1).coerceIn(0, lastIndex), usePrimaryDirection = true)
-    return layout.getLineForOffset(first) to left + (right - left) * progress
-}
-
-/**
- * The playhead the sweep is drawn from. Positions arrive every 50 ms, a frame or two late and never
- * on a frame. Restarting from each one — rememberSmoothPlayhead, which a word-at-a-time wipe can
- * afford — makes a continuous sweep stall and then jump by that much several times a second. This
- * one keeps its own time on the frame clock and only leans toward the reports, so it moves at a
- * steady speed and never steps back. A report further off than [SWEEP_SNAP_MS] is a seek, and it
- * goes straight there. While [running] is false it simply follows the reports.
- */
-@Composable
-private fun rememberSweepPlayhead(
-    rawMs: Long,
-    running: Boolean,
-): State<Long> {
-    val playhead = remember { mutableLongStateOf(rawMs) }
-    val latestRaw by rememberUpdatedState(rawMs)
-    LaunchedEffect(running) {
-        if (!running) {
-            snapshotFlow { latestRaw }.collect { playhead.longValue = it }
-            return@LaunchedEffect
-        }
-        var reported = latestRaw
-        var reportedAt = -1L
-        var lastFrame = -1L
-        var position = playhead.longValue.toDouble()
-        while (true) {
-            withFrameNanos { now ->
-                if (reportedAt < 0L || latestRaw != reported) {
-                    reported = latestRaw
-                    reportedAt = now
+                    parsed != null -> SungWords(parsed, active = true, playhead, style, color, halo, maxLines = lines)
+                    sung != null ->
+                        Text(
+                            text = lineText,
+                            style = style.copy(color = color, textDirection = TextDirection.ContentOrLtr),
+                            maxLines = lines,
+                            softWrap = !single,
+                            overflow = if (single) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            modifier =
+                                if (single) {
+                                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately)
+                                } else {
+                                    Modifier.fillMaxWidth()
+                                },
+                        )
                 }
-                // Where the last report puts the song by now. Capped, so a player that has stalled
-                // (no new report while it buffers) cannot drag the light on without it.
-                val target = reported + ((now - reportedAt) / 1_000_000.0).coerceAtMost(SWEEP_MAX_EXTRAPOLATION_MS)
-                val step = if (lastFrame < 0L) 0.0 else (now - lastFrame) / 1_000_000.0
-                lastFrame = now
-                position =
-                    if (abs(target - position) > SWEEP_SNAP_MS) {
-                        target
-                    } else {
-                        // Close a share of the gap each frame, in proportion to the frame's length so
-                        // 60 Hz and 120 Hz settle alike; max() keeps it from ever running backwards.
-                        val advanced = position + step
-                        max(position, advanced + (target - advanced) * (step / SWEEP_CATCH_UP_MS).coerceAtMost(1.0))
-                    }
-                playhead.longValue = position.roundToLong()
             }
         }
     }
-    return playhead
 }
 
-private fun Line.displayText(): String = words.stripRichSyncTimestamps()
+// A line with something to sing: lead words, or only background vocals. An empty timed line is a break.
+private fun Line.hasWords(): Boolean = words.stripRichSyncTimestamps().isNotEmpty() || !background.isNullOrBlank()
+
+private fun Line.displayText(): String = words.stripRichSyncTimestamps().ifEmpty { background?.stripRichSyncTimestamps().orEmpty() }
 
 /**
  * The reading a one-line lyric slot shows instead of a line, or null: Romanized lyric line is off,
@@ -419,7 +217,8 @@ private fun rememberReading(): (String) -> String? {
 
 // The line's word timing, carried over to [roman] when it is shown instead.
 private fun Line.parsed(roman: String?): ParsedRichSyncLine? =
-    parseRichSyncWords(words, startTimeMs, endTimeMs)?.let { if (roman != null) it.spreadOver(roman) else it }
+    (parseRichSyncWords(words, startTimeMs, endTimeMs) ?: background?.let { parseRichSyncWords(it, startTimeMs, endTimeMs) })
+        ?.let { if (roman != null) it.spreadOver(roman) else it }
 
 /**
  * [reading] timed by this line: the romanizer's output is timed to nothing, so the words' sung span
@@ -429,7 +228,7 @@ private fun Line.parsed(roman: String?): ParsedRichSyncLine? =
 internal fun ParsedRichSyncLine.spreadOver(reading: String): ParsedRichSyncLine {
     val parts = reading.split(Regex("\\s+")).filter { it.isNotEmpty() }
     val from = words.firstOrNull()?.startTimeMs ?: return this
-    val to = lineEndTimeMs.takeIf { it != Long.MAX_VALUE && it > from } ?: (words.last().startTimeMs + LAST_WORD_FALLBACK_MS)
+    val to = endOf(words.lastIndex)
     val per = (to - from).toDouble() / parts.sumOf { it.length }.coerceAtLeast(1)
     var chars = 0
     val timed =
@@ -439,22 +238,3 @@ internal fun ParsedRichSyncLine.spreadOver(reading: String): ParsedRichSyncLine 
     return ParsedRichSyncLine(timed, lineStartTimeMs, to)
 }
 
-// The unsung part of a word-synced line: present enough to read ahead, clearly not lit yet.
-private const val UNSUNG_ALPHA = 0.45f
-private val UNSUNG = Color.White.copy(alpha = UNSUNG_ALPHA)
-
-private val WAITING_DOT_SIZE = 5.dp
-private val WAITING_DOT_GAP = 4.dp
-
-// Line change: long enough to read as travel, short enough that fast lines do not queue.
-private const val LINE_CHANGE_MS = 340
-
-// A line's end time is often absent; the last word is then given this long to light.
-private const val LAST_WORD_FALLBACK_MS = 600L
-
-// How the sweep's own clock tracks the reported position: the time it takes to close most of a
-// gap, the largest gap it closes gradually rather than jumping, and how far past the last report
-// it will run on its own.
-private const val SWEEP_CATCH_UP_MS = 150.0
-private const val SWEEP_SNAP_MS = 500.0
-private const val SWEEP_MAX_EXTRAPOLATION_MS = 250.0

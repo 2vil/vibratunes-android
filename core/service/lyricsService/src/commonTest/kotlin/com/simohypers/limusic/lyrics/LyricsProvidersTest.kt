@@ -22,6 +22,14 @@ class LyricsProvidersTest {
     }
 
     @Test
+    fun elrcReadsAStampWithNothingAfterItAsTheWordsEnd() {
+        val line = parseElrc("[00:10.50]<00:10.50>Hello<00:10.90> <00:11.20>world<00:12.00>").single()
+        assertEquals("Hello world", line.text)
+        assertEquals(listOf(10_900L, 12_000L), line.words!!.map { it.endMs })
+        assertEquals("<00:10.500>Hello<00:10.900> <00:11.200>world<00:12.000>", line.words!!.toRichSync())
+    }
+
+    @Test
     fun ttmlKeepsSpacesBetweenSpansWithTheWordBefore() {
         val xml =
             """<tt><body><div><p begin="1.5" end="3.0"><span begin="1.5" end="2">Hel</span><span begin="2" end="2.4">lo</span> <span begin="2.4" end="3">world</span></p></div></body></tt>"""
@@ -29,7 +37,7 @@ class LyricsProvidersTest {
         assertEquals("Hello world", line.text)
         assertEquals(1_500L to 3_000L, line.timeMs to line.endMs)
         // Syllables join into words: "Hel" + "lo " is one word starting at 1.5s.
-        assertEquals("<00:01.500>Hello <00:02.400>world", line.words!!.toRichSync())
+        assertEquals("<00:01.500>Hello <00:02.400>world<00:03.000>", line.words!!.toRichSync())
     }
 
     @Test

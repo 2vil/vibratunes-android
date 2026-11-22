@@ -42,11 +42,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.expect.ui.DeviceVolumeController
-import com.simohypers.limusic.expect.ui.isLyricsBlurSupported
-import com.simohypers.limusic.ui.component.ImmersiveLyricPaddingX
 import com.simohypers.limusic.ui.component.LyricsOffsetFloatingControl
 import com.simohypers.limusic.ui.component.LyricsView
 import com.simohypers.limusic.ui.component.hasTiming
@@ -63,7 +59,6 @@ import com.simohypers.limusic.viewModel.NowPlayingScreenData
 import com.simohypers.limusic.viewModel.UIEvent
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 import limusic.composeapp.generated.resources.Res
 import limusic.composeapp.generated.resources.line_synced
 import limusic.composeapp.generated.resources.rich_synced
@@ -88,18 +83,9 @@ internal fun ImmersiveLyricsView(
     outputName: String?,
     onOpenOutput: () -> Unit,
     modifier: Modifier = Modifier,
-    dataStoreManager: DataStoreManager = koinInject(),
 ) {
     val localDensity = LocalDensity.current
     val lyricsData = state.screenData.lyricsData
-
-    // LyricsView applies ImmersiveLyricPaddingX ITSELF, but only on its Immersive branch — its
-    // Classic branch renders LyricsLineItem, which has no horizontal padding of its own. So this
-    // tab, which contributes no gutter, left Classic lyrics flush against the screen edge while
-    // the header right above them sits at 20dp. Same split the fullscreen sheet already does:
-    // the caller contributes whatever the renderer does not, so the TOTAL is the same either way.
-    val lyricsStyle by dataStoreManager.lyricsStyle.collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_CLASSIC)
-    val rendererOwnsGutter = lyricsStyle == DataStoreManager.LYRICS_STYLE_IMMERSIVE && isLyricsBlurSupported()
 
     // The whole page goes to the lyrics once you stop touching it, and brings the transport
     // back the moment you touch it again. rememberSaveable so a rotation does not yank the
@@ -166,8 +152,6 @@ internal fun ImmersiveLyricsView(
                     },
         ) {
             if (lyricsData != null) {
-                // Transparent background: the page's artwork-tinted gradient is the backdrop,
-                // not LyricsView's own dark card color.
                 // The app's own renderer, with its own line sizes/animations. The provider caption
                 // rides as its LAST list item so it scrolls with the lyrics, per the owner's
                 // original spec.
@@ -185,12 +169,12 @@ internal fun ImmersiveLyricsView(
                             // Softer bottom fade than the top: a lyric line is ~54dp tall, and a
                             // 44dp fade dissolved most of the last visible line.
                             .immersiveVerticalFadeEdges(topFade = 28.dp, bottomFade = 18.dp)
-                            // Zero under the Immersive renderer, which insets its own lines so
-                            // its blur has margin to spill into; the full gutter under Classic,
-                            // which insets nothing. Applied AFTER the fade so the fade still spans
-                            // the full width.
-                            .padding(horizontal = if (rendererOwnsGutter) 0.dp else ImmersiveLyricPaddingX),
-                    backgroundColor = Color.Transparent,
+                            // The header's gutter. Applied AFTER the fade so the fade still
+                            // spans the full width.
+                            .padding(horizontal = LYRICS_GUTTER),
+                    // The page is always dark.
+                    ink = Color.White,
+                    playing = state.controllerState.isPlaying,
                     footerContent = {
                         // Right-aligned, and stacked: plain text rather than the AIBadge pill the
                         // other styles use. Classic puts that badge beside a "Lyrics" heading where
@@ -305,6 +289,9 @@ internal fun ImmersiveLyricsView(
 
 // The page clears itself quickly while you are just listening; any touch brings the controls back.
 private const val CLUSTER_AUTO_HIDE_MS = 3_000L
+
+/** The lyrics' side margins, the header's. */
+private val LYRICS_GUTTER = 20.dp
 
 @Composable
 private fun ImmersiveFloatingCircleButton(

@@ -94,6 +94,7 @@ internal fun ClassicLyricsBody(
     val missFor by sharedViewModel.lyricsMissFor.collectAsStateWithLifecycle()
     val textScale by sharedViewModel.getLyricsTextSize().collectAsStateWithLifecycle(1f)
     val romanizedOn by sharedViewModel.getLyricsRomanized().collectAsStateWithLifecycle(true)
+    val controls by sharedViewModel.controllerState.collectAsStateWithLifecycle()
     val videoId = nowPlaying?.songEntity?.videoId
     val lyricsData = screenData.lyricsData
     // Null lyrics mean "still looking" until the chain has come back empty for this very song.
@@ -126,9 +127,9 @@ internal fun ClassicLyricsBody(
                         timeLine = sharedViewModel.timeline,
                         onLineClick = { sharedViewModel.onUIEvent(UIEvent.UpdateProgress(it)) },
                         modifier = Modifier.fillMaxSize(),
-                        limusic = true,
                         textScale = textScale,
                         showRomanized = romanizedOn,
+                        playing = controls.isPlaying,
                     )
                 missing -> NothingFound { picker = true }
                 else -> Skeleton()

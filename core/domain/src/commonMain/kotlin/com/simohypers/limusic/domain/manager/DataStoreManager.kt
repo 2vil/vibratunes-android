@@ -357,15 +357,6 @@ interface DataStoreManager {
     suspend fun setNowPlayingStyle(style: String)
 
     /**
-     * One of [LYRICS_STYLE_CLASSIC], [LYRICS_STYLE_IMMERSIVE]. Deliberately independent of
-     * [nowPlayingStyle]: it governs how a lyric line is drawn, everywhere lyrics are drawn —
-     * the fullscreen sheet included, whichever player style is in use.
-     */
-    val lyricsStyle: Flow<String>
-
-    suspend fun setLyricsStyle(style: String)
-
-    /**
      * Which languages get a Latin-script reading shown for their lyrics, as a comma-separated list
      * of [com.simohypers.limusic.lyrics.romanization.RomanizationLanguage] NAMES — empty string means the
      * feature is off, which is the default.
@@ -503,9 +494,6 @@ interface DataStoreManager {
         const val NOW_PLAYING_STYLE_SPOTIFY = "SPOTIFY"
         const val NOW_PLAYING_STYLE_M3_EXPRESSIVE = "M3_EXPRESSIVE"
         const val NOW_PLAYING_STYLE_IMMERSIVE = "APPLE_MUSIC"
-
-        const val LYRICS_STYLE_CLASSIC = "CLASSIC"
-        const val LYRICS_STYLE_IMMERSIVE = "APPLE_MUSIC"
 
         const val EQUALIZER_TYPE_BUILT_IN = "BUILT_IN"
         const val EQUALIZER_TYPE_SYSTEM = "SYSTEM"

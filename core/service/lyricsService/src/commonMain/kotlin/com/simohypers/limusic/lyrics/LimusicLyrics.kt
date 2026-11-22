@@ -298,7 +298,7 @@ class LimusicLyrics(
                         timeMs = l.timeMs,
                         endMs = l.endTimeMs,
                         text = l.text,
-                        words = l.words.map { LyricWord(it.text, it.startMs, it.bg) }.ifEmpty { null },
+                        words = l.words.map { LyricWord(it.text, it.startMs, it.bg, it.endMs) }.ifEmpty { null },
                         agent = l.agent,
                     )
                 }
@@ -339,5 +339,6 @@ class LimusicLyrics(
         val text: String,
         @SerialName("start_ms") val startMs: Long,
         val bg: Boolean = false,
+        @SerialName("end_ms") val endMs: Long? = null,
     )
 }

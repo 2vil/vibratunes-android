@@ -608,18 +608,6 @@ internal class DataStoreManagerImpl(
         }
     }
 
-    override val lyricsStyle =
-        settingsDataStore.data.map { preferences ->
-            preferences[LYRICS_STYLE] ?: DataStoreManager.LYRICS_STYLE_CLASSIC
-        }
-
-    override suspend fun setLyricsStyle(style: String) {
-        withContext(Dispatchers.IO) {
-            settingsDataStore.edit { settings ->
-                settings[LYRICS_STYLE] = style
-            }
-        }
-    }
 
     override val romanizationLanguages =
         settingsDataStore.data.map { preferences ->
@@ -1335,7 +1323,6 @@ internal class DataStoreManagerImpl(
         val CUSTOM_THEME_COLOR = stringPreferencesKey("custom_theme_color")
         val ARTWORK_COLORS = stringPreferencesKey("artwork_colors")
         val NOW_PLAYING_STYLE = stringPreferencesKey("now_playing_style")
-        val LYRICS_STYLE = stringPreferencesKey("lyrics_style")
         val ROMANIZATION_LANGUAGES = stringPreferencesKey("romanization_languages")
         val LYRICS_OFFSET_MS = intPreferencesKey("lyrics_offset_ms")
         val LYRICS_TEXT_SIZE = floatPreferencesKey("lyrics_size")
