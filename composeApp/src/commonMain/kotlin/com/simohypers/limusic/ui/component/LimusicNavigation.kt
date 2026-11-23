@@ -3,6 +3,7 @@ package com.simohypers.limusic.ui.component
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -11,17 +12,23 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -74,12 +81,14 @@ fun NavController.navigateToTab(destination: Any) =
 /**
  * The bottom tabs. The tab you are in is the last tab on the back stack, so it stays lit on the
  * album or artist pages opened from it. Tapping it there goes back to the tab's root; tapping it on
- * the root calls [onReselect] (scroll to top or refresh).
+ * the root calls [onReselect] (scroll to top or refresh). [compact] is the "Compact navigation bar"
+ * setting: off, the bar keeps Material's own 80dp.
  */
 @Composable
 fun LimusicNavigationBar(
     navController: NavController,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     onReselect: (KClass<*>) -> Unit = {},
 ) {
     val backStack by navController.currentBackStack.collectAsState()
@@ -92,6 +101,7 @@ fun LimusicNavigationBar(
     Column(modifier) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NavigationBar(
+            modifier = if (compact) Modifier.height(compactBarHeight()) else Modifier,
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
@@ -124,6 +134,34 @@ fun LimusicNavigationBar(
         }
     }
 }
+
+/**
+ * Height for the compact bar, system navigation inset included. Each item holds itself at M3's 80dp
+ * unless the bar's height caps it, so the bar gets a fixed height: 56dp, or more when a large font
+ * scale makes the label taller than 56dp leaves room for.
+ */
+@Composable
+private fun compactBarHeight(): Dp {
+    val labelStyle = typo().bodySmall
+    val labelSample = stringResource(Res.string.home)
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelHeight =
+        remember(textMeasurer, labelStyle, labelSample, density) {
+            with(density) { textMeasurer.measure(labelSample, labelStyle).size.height.toDp() }
+        }
+    // NavigationBar pads itself by these insets, so its height has to include them.
+    val bottomInset = NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding()
+    return max(LimusicNavigationBarHeight, ItemHeightWithoutLabel + labelHeight) + bottomInset
+}
+
+// M3's 80dp bar is roomier than three tabs need. An item is ItemHeightWithoutLabel plus its
+// label (11sp, ~15dp): about 55dp, so 56dp is the slimmest bar that fits at the default font scale.
+private val LimusicNavigationBarHeight = 56.dp
+
+// What NavigationBarItem stacks besides the label (M3 1.5 placeLabelAndIcon): the 24dp icon, 4dp for
+// the lower half of its indicator pill, 4dp to the label, and at least 4dp above and below the lot.
+private val ItemHeightWithoutLabel = 40.dp
 
 /**
  * The top bar Home and Library share: the title on the left, the tab's own [actions] on the right. Draws below the status bar and nothing behind itself, so the screen decides the ground.

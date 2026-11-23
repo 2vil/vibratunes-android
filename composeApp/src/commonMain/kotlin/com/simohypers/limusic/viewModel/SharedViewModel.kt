@@ -1297,6 +1297,13 @@ class SharedViewModel(
         viewModelScope.launch { dataStoreManager.putString(FLAT_PROGRESS_BAR, if (on) TRUE else "") }
     }
 
+    // Off by default: the 56dp tab bar is a taste, not a fix, so existing users keep Material's 80dp.
+    val compactNavBar: StateFlow<Boolean> = dataStoreManager.getString(COMPACT_NAV_BAR).map { it == TRUE }.stateInStored()
+
+    fun setCompactNavBar(on: Boolean) {
+        viewModelScope.launch { dataStoreManager.putString(COMPACT_NAV_BAR, if (on) TRUE else "") }
+    }
+
     /**
      * The colour "Adapt colors to artwork" last took from a cover, saved so a cold start opens in the
      * restored track's colour instead of the theme's accent while the queue and its cover load. Read
@@ -1526,3 +1533,4 @@ private fun String.isCanvasVideoUrl(): Boolean = contains(".mp4") || contains(".
 private const val NEW_PLAYLIST_WHERE = "new_playlist_where"
 private const val ARTWORK_COLOR = "artwork_color"
 private const val FLAT_PROGRESS_BAR = "flat_progress_bar"
+private const val COMPACT_NAV_BAR = "compact_nav_bar"
