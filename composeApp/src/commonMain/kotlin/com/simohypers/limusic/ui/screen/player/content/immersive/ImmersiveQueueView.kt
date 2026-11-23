@@ -3,12 +3,9 @@
 package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.ui.theme.rounded
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,11 +33,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,15 +64,17 @@ import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentState
 import com.simohypers.limusic.viewModel.UIEvent
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import multiplatform.network.cmptoast.ToastGravity
+import multiplatform.network.cmptoast.showToast
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import limusic.composeapp.generated.resources.Res
 import limusic.composeapp.generated.resources.continue_playing
 import limusic.composeapp.generated.resources.endless_queue
 import limusic.composeapp.generated.resources.now_playing
+import limusic.composeapp.generated.resources.queue_move_below_playing
 
 /**
  * The QUEUE body: compact header, [Info][PlaylistAdd][Shuffle][Repeat] pills, a "Continue
@@ -174,8 +171,15 @@ internal fun ImmersiveQueueView(
         // FIRST composition — capturing `offset` directly would keep using the offset from the
         // track that was playing back then and swap the wrong two rows after any track change.
         val currentOffset by rememberUpdatedState(offset)
+        // The list is upcoming tracks only, so its first row is the one right after the playing
+        // song (shown in the header above): a row stops there, and pulling it further says why.
+        val belowPlaying = stringResource(Res.string.queue_move_below_playing)
         val dragDropState =
-            rememberDragDropState(lazyListState) { from, to ->
+            rememberDragDropState(
+                lazyListState,
+                minIndex = 0,
+                onBlocked = { showToast(belowPlaying, ToastGravity.Bottom) },
+            ) { from, to ->
                 actions.onMoveQueueItem(from + currentOffset, to + currentOffset)
             }
 
@@ -189,8 +193,6 @@ internal fun ImmersiveQueueView(
                 lazyListState.animateScrollToItem(0)
             }
         }
-
-        var overscrollJob by remember { mutableStateOf<Job?>(null) }
 
         Box(
             modifier =
@@ -211,31 +213,15 @@ internal fun ImmersiveQueueView(
                             detectDragGesturesAfterLongPress(
                                 onDrag = { change, dragOffset ->
                                     change.consume()
+                                    // Also scrolls the list while the finger is near its top or bottom.
                                     dragDropState.onDrag(offset = dragOffset)
-                                    if (overscrollJob?.isActive == true) {
-                                        return@detectDragGesturesAfterLongPress
-                                    }
-                                    dragDropState
-                                        .checkForOverScroll()
-                                        .takeIf { it != 0f }
-                                        ?.let { delta ->
-                                            overscrollJob =
-                                                coroutineScope.launch {
-                                                    dragDropState.state.animateScrollBy(
-                                                        delta * 1.3f,
-                                                        tween(easing = FastOutLinearInEasing),
-                                                    )
-                                                }
-                                        } ?: run { overscrollJob?.cancel() }
                                 },
                                 onDragStart = { dragStartOffset -> dragDropState.onDragStart(dragStartOffset) },
                                 onDragEnd = {
                                     dragDropState.onDragInterrupted(true)
-                                    overscrollJob?.cancel()
                                 },
                                 onDragCancel = {
                                     dragDropState.onDragInterrupted()
-                                    overscrollJob?.cancel()
                                 },
                             )
                         },

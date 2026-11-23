@@ -13,7 +13,6 @@ import limusic.composeapp.generated.resources.new_playlist_where_device
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -27,7 +26,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -39,6 +37,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -149,7 +148,6 @@ import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
@@ -334,14 +332,21 @@ fun LocalPlaylistScreen(
         )
     }
     val coroutineScope = rememberCoroutineScope()
+    // The list runs the whole screen: the status bar (and, once scrolled, the top bar) covers its
+    // top, the mini player and the nav bar its bottom. The edge scroll starts where rows still show.
     val dragDropState =
-        rememberDragDropState(lazyState) { from, to ->
+        rememberDragDropState(
+            lazyState,
+            coveredTop =
+                WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                    if (shouldHideTopBar) TOP_BAR_HEIGHT else 0.dp,
+            coveredBottom = innerPadding.calculateBottomPadding(),
+        ) { from, to ->
             coroutineScope.launch {
                 Logger.d(TAG, "onMove from $from to $to")
                 viewModel.changeLocalPlaylistItemPosition(from - 1, to - 1)
             }
         }
-    var overscrollJob by remember { mutableStateOf<Job?>(null) }
     var showSearchBar by rememberSaveable { mutableStateOf(false) }
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
@@ -350,23 +355,8 @@ fun LocalPlaylistScreen(
         { change, offset ->
             Logger.d(TAG, "onDrag $offset")
             change.consume()
+            // Also scrolls the list while the finger is near its top or bottom.
             dragDropState.onDrag(offset = offset)
-
-            if (overscrollJob?.isActive != true) {
-                dragDropState
-                    .checkForOverScroll()
-                    .takeIf { it != 0f }
-                    ?.let {
-                        overscrollJob =
-                            coroutineScope.launch {
-                                dragDropState.state.animateScrollBy(
-                                    it * 1.3f,
-                                    tween(easing = FastOutLinearInEasing),
-                                )
-                            }
-                    }
-                    ?: run { overscrollJob?.cancel() }
-            }
         }
     val onDragStart: (Offset) -> Unit = { offset ->
         Logger.d(TAG, "onDragStart $offset")
@@ -375,12 +365,10 @@ fun LocalPlaylistScreen(
     val onDragEnd: () -> Unit = {
         Logger.d(TAG, "onDragEnd")
         dragDropState.onDragInterrupted(true)
-        overscrollJob?.cancel()
     }
     val onDragCancel: () -> Unit = {
         Logger.d(TAG, "onDragCancel")
         dragDropState.onDragInterrupted()
-        overscrollJob?.cancel()
     }
     val reorderGesture = remember { ReorderGesture() }
 //    Box {
@@ -903,3 +891,6 @@ fun LocalPlaylistScreen(
         )
     }
 }
+
+// The small TopAppBar's height below the status bar (Material 3).
+private val TOP_BAR_HEIGHT = 64.dp

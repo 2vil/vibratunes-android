@@ -2,11 +2,9 @@ package com.simohypers.limusic.ui.component
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -94,9 +92,10 @@ import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveFadeBe
 import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
 import com.simohypers.limusic.ui.theme.AppThemeContent
 import com.simohypers.limusic.ui.theme.typo
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import multiplatform.network.cmptoast.ToastGravity
+import multiplatform.network.cmptoast.showToast
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import limusic.composeapp.generated.resources.Res
@@ -109,6 +108,7 @@ import limusic.composeapp.generated.resources.endless_queue
 import limusic.composeapp.generated.resources.now_playing
 import limusic.composeapp.generated.resources.queue
 import limusic.composeapp.generated.resources.queue_ends
+import limusic.composeapp.generated.resources.queue_move_below_playing
 import limusic.composeapp.generated.resources.songs_left
 import limusic.composeapp.generated.resources.songs_left_one
 
@@ -287,15 +287,21 @@ internal fun QueueList(
             }
         }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = lazyIndex(current.coerceAtLeast(0)))
+    // Only upcoming rows move (see onDragStart below): the row in hand stops under the playing one,
+    // and pulling it further says why.
+    val belowPlaying = stringResource(Res.string.queue_move_below_playing)
     val dragDropState =
-        rememberDragDropState(listState) { from, to ->
+        rememberDragDropState(
+            listState,
+            minIndex = if (current >= 0) lazyIndex(current) + 1 else null,
+            onBlocked = { showToast(belowPlaying, ToastGravity.Bottom) },
+        ) { from, to ->
             // Back from list positions to queue positions; the divider counts as autoplay's first row.
             fun queueIndex(i: Int) = if (hasAutoplay && i > view.autoplayFrom) i - 1 else i
             val src = queueIndex(from)
             val dst = if (hasAutoplay && to == view.autoplayFrom && src < to) to - 1 else queueIndex(to)
             musicServiceHandler.moveInQueue(src, dst)
         }
-    var overscrollJob by remember { mutableStateOf<Job?>(null) }
     // The row just tapped: it is already under the finger, so the list stays put for it.
     var clicked by remember { mutableStateOf<String?>(null) }
 
@@ -353,35 +359,21 @@ internal fun QueueList(
                         detectDragGesturesAfterLongPress(
                             onDragStart = { offset ->
                                 // Only upcoming rows move: the playing track and the history stay put.
-                                val hit =
-                                    listState.layoutInfo.visibleItemsInfo.firstOrNull {
-                                        offset.y.toInt() in it.offset..(it.offset + it.size)
-                                    }
+                                val hit = dragDropState.itemAt(offset)
                                 val key = hit?.key as? String
                                 val index = key?.let { keys.indexOf(it) } ?: -1
                                 if (index > current) dragDropState.onDragStart(offset)
                             },
                             onDrag = { change, offset ->
                                 change.consume()
+                                // Also scrolls the list while the finger is near its top or bottom.
                                 dragDropState.onDrag(offset = offset)
-                                if (overscrollJob?.isActive == true) return@detectDragGesturesAfterLongPress
-                                dragDropState
-                                    .checkForOverScroll()
-                                    .takeIf { it != 0f }
-                                    ?.let {
-                                        overscrollJob =
-                                            scope.launch {
-                                                dragDropState.state.animateScrollBy(it * 1.3f, tween(easing = FastOutLinearInEasing))
-                                            }
-                                    } ?: run { overscrollJob?.cancel() }
                             },
                             onDragEnd = {
                                 dragDropState.onDragInterrupted(true)
-                                overscrollJob?.cancel()
                             },
                             onDragCancel = {
                                 dragDropState.onDragInterrupted()
-                                overscrollJob?.cancel()
                             },
                         )
                     },
