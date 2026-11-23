@@ -415,6 +415,7 @@
     <string name="clear_queue">Clear queue</string>
     <string name="queue_ends">The queue ends after this song.</string>
     <string name="empty_queue">Queue is empty</string>
+    <string name="queue_move_below_playing">Songs can only move below the one that's playing</string>
     <string name="autoplay_similar_songs">Autoplay similar songs</string>
     <string name="autoplay_similar_songs_hint">Continuously play recommended tracks when the queue finishes.</string>
     <string name="prevent_duplicates">Prevent duplicate songs in queue</string>
@@ -1048,4 +1049,5 @@
     <string name="sign_in_failed">Sign-in didn't complete. Try signing in again.</string>
     <string name="account_check_failed">Couldn't reach YouTube to check that account. Try again in a bit.</string>
     <string name="proxy_saved_restart_to_apply">Proxy saved, restart to apply</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
 </resources>
