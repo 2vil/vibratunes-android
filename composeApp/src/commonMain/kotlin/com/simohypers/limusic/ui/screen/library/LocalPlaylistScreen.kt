@@ -28,6 +28,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
@@ -90,7 +92,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -161,6 +168,13 @@ import limusic.composeapp.generated.resources.suggest
 import limusic.composeapp.generated.resources.your_playlist
 
 private const val TAG = "LocalPlaylistScreen"
+
+// Hands a press on a row's drag handle over to the list, which runs the drag.
+// Plain fields, not state: only the pointer handlers read them.
+private class ReorderGesture {
+    var handlePointer: PointerId? = null
+    var fromHandle = false
+}
 
 @ExperimentalFoundationApi
 @OptIn(
@@ -331,6 +345,44 @@ fun LocalPlaylistScreen(
     var showSearchBar by rememberSaveable { mutableStateOf(false) }
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    // Shared by the long-press drag and the handle drag below.
+    val onDrag: (change: PointerInputChange, offset: Offset) -> Unit =
+        { change, offset ->
+            Logger.d(TAG, "onDrag $offset")
+            change.consume()
+            dragDropState.onDrag(offset = offset)
+
+            if (overscrollJob?.isActive != true) {
+                dragDropState
+                    .checkForOverScroll()
+                    .takeIf { it != 0f }
+                    ?.let {
+                        overscrollJob =
+                            coroutineScope.launch {
+                                dragDropState.state.animateScrollBy(
+                                    it * 1.3f,
+                                    tween(easing = FastOutLinearInEasing),
+                                )
+                            }
+                    }
+                    ?: run { overscrollJob?.cancel() }
+            }
+        }
+    val onDragStart: (Offset) -> Unit = { offset ->
+        Logger.d(TAG, "onDragStart $offset")
+        dragDropState.onDragStart(offset)
+    }
+    val onDragEnd: () -> Unit = {
+        Logger.d(TAG, "onDragEnd")
+        dragDropState.onDragInterrupted(true)
+        overscrollJob?.cancel()
+    }
+    val onDragCancel: () -> Unit = {
+        Logger.d(TAG, "onDragCancel")
+        dragDropState.onDragInterrupted()
+        overscrollJob?.cancel()
+    }
+    val reorderGesture = remember { ReorderGesture() }
 //    Box {
     LazyColumn(
         modifier =
@@ -340,58 +392,79 @@ fun LocalPlaylistScreen(
                 .hazeSource(hazeState)
                 .pointerInput(changingOrder) {
                     if (!changingOrder) return@pointerInput
-                    val onDrag: (change: androidx.compose.ui.input.pointer.PointerInputChange, offset: Offset) -> Unit =
-                        { change, offset ->
-                            Logger.d(TAG, "onDrag $offset")
-                            change.consume()
-                            dragDropState.onDrag(offset = offset)
-
-                            if (overscrollJob?.isActive != true) {
-                                dragDropState
-                                    .checkForOverScroll()
-                                    .takeIf { it != 0f }
-                                    ?.let {
-                                        overscrollJob =
-                                            coroutineScope.launch {
-                                                dragDropState.state.animateScrollBy(
-                                                    it * 1.3f,
-                                                    tween(easing = FastOutLinearInEasing),
-                                                )
-                                            }
-                                    }
-                                    ?: run { overscrollJob?.cancel() }
-                            }
+                    // A drag started from a handle runs in the next detector. Ignore it here, or a
+                    // finger held still on the handle would also start this long-press drag.
+                    var ownsDrag = false
+                    val onListDragStart: (Offset) -> Unit = { offset ->
+                        if (!reorderGesture.fromHandle) {
+                            ownsDrag = true
+                            onDragStart(offset)
                         }
-                    val onDragStart: (Offset) -> Unit = { offset ->
-                        Logger.d(TAG, "onDragStart $offset")
-                        dragDropState.onDragStart(offset)
                     }
-                    val onDragEnd: () -> Unit = {
-                        Logger.d(TAG, "onDragEnd")
-                        dragDropState.onDragInterrupted(true)
-                        overscrollJob?.cancel()
+                    val onListDrag: (PointerInputChange, Offset) -> Unit = { change, offset ->
+                        if (ownsDrag) onDrag(change, offset)
                     }
-                    val onDragCancel: () -> Unit = {
-                        Logger.d(TAG, "onDragCancel")
-                        dragDropState.onDragInterrupted()
-                        overscrollJob?.cancel()
+                    val onListDragEnd: () -> Unit = {
+                        if (ownsDrag) onDragEnd()
+                        ownsDrag = false
+                    }
+                    val onListDragCancel: () -> Unit = {
+                        if (ownsDrag) onDragCancel()
+                        ownsDrag = false
                     }
                     if (getPlatform() == Platform.Desktop) {
                         // Desktop: normal drag (click-and-drag), no long press needed
                         detectDragGestures(
-                            onDrag = onDrag,
-                            onDragStart = onDragStart,
-                            onDragEnd = onDragEnd,
-                            onDragCancel = onDragCancel,
+                            onDrag = onListDrag,
+                            onDragStart = onListDragStart,
+                            onDragEnd = onListDragEnd,
+                            onDragCancel = onListDragCancel,
                         )
                     } else {
                         // Android: long press then drag (touch-friendly)
                         detectDragGesturesAfterLongPress(
-                            onDrag = onDrag,
-                            onDragStart = onDragStart,
-                            onDragEnd = onDragEnd,
-                            onDragCancel = onDragCancel,
+                            onDrag = onListDrag,
+                            onDragStart = onListDragStart,
+                            onDragEnd = onListDragEnd,
+                            onDragCancel = onListDragCancel,
                         )
+                    }
+                }.pointerInput(changingOrder) {
+                    // Android: a press on a row's drag handle drags at once, with no long press.
+                    // The list runs that drag, not the handle: its coordinates don't move with the
+                    // dragged row, and the drag goes on if the row scrolls out and is disposed.
+                    // Desktop's click-and-drag above already works from the handle.
+                    if (!changingOrder || getPlatform() == Platform.Desktop) return@pointerInput
+                    awaitEachGesture {
+                        // Main pass: the handle, deeper in the tree, has marked this pointer by now.
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (reorderGesture.handlePointer != down.id) return@awaitEachGesture
+                        reorderGesture.handlePointer = null
+                        reorderGesture.fromHandle = true
+                        onDragStart(down.position)
+                        var ended = false
+                        try {
+                            while (true) {
+                                // Initial pass: take each move before the row's swipe and the list's
+                                // scroll see it, so neither reacts to this drag.
+                                val change =
+                                    awaitPointerEvent(PointerEventPass.Initial)
+                                        .changes
+                                        .firstOrNull { it.id == down.id } ?: break
+                                if (change.changedToUpIgnoreConsumed()) {
+                                    change.consume()
+                                    ended = true
+                                    onDragEnd()
+                                    break
+                                }
+                                val delta = change.positionChangeIgnoreConsumed()
+                                if (delta != Offset.Zero) onDrag(change, delta)
+                                change.consume()
+                            }
+                        } finally {
+                            if (!ended) onDragCancel()
+                            reorderGesture.fromHandle = false
+                        }
                     }
                 },
         state = lazyState,
@@ -583,6 +656,20 @@ fun LocalPlaylistScreen(
                 SongFullWidthItems(
                     isPlaying = playingTrack?.videoId == item.videoId && isPlaying,
                     shouldShowDragHandle = changingOrder,
+                    // Marks the press as a handle drag for the list's detector, and consumes it so
+                    // the row's click doesn't fire. Desktop needs nothing: its drag starts anywhere.
+                    dragHandleModifier =
+                        if (getPlatform() == Platform.Desktop) {
+                            Modifier
+                        } else {
+                            Modifier.pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    reorderGesture.handlePointer = down.id
+                                    down.consume()
+                                }
+                            }
+                        },
                     songEntity = item,
                     onMoreClickListener = { onItemMoreClick(it) },
                     onClickListener = { onPlaylistItemClick(it) },

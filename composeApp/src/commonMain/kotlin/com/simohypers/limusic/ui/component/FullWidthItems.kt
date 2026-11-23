@@ -102,6 +102,7 @@ import limusic.composeapp.generated.resources.Res
 import limusic.composeapp.generated.resources.add_to_queue
 import limusic.composeapp.generated.resources.album
 import limusic.composeapp.generated.resources.artists
+import limusic.composeapp.generated.resources.drag_to_reorder
 import limusic.composeapp.generated.resources.playlist
 import limusic.composeapp.generated.resources.podcasts
 import limusic.composeapp.generated.resources.radio
@@ -123,6 +124,8 @@ fun SongFullWidthItems(
     songEntity: SongEntity? = null,
     isPlaying: Boolean,
     shouldShowDragHandle: Boolean = false,
+    // Gestures for the drag handle, so a screen can start a reorder from it.
+    dragHandleModifier: Modifier = Modifier,
     onMoreClickListener: ((videoId: String) -> Unit)? = null,
     onClickListener: ((videoId: String) -> Unit)? = null,
     onAddToQueue: ((videoId: String) -> Unit)? = null,
@@ -421,12 +424,17 @@ fun SongFullWidthItems(
                     enter = fadeIn() + expandHorizontally(),
                     exit = fadeOut() + shrinkHorizontally(),
                 ) {
-                    Icon(
-                        LimusicIcons.DragHandle,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
+                    // 48dp so the handle is easy to grab with a thumb.
+                    Box(
+                        modifier = Modifier.size(48.dp).then(dragHandleModifier),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            LimusicIcons.DragHandle,
+                            contentDescription = stringResource(Res.string.drag_to_reorder),
+                            tint = contentColor,
+                        )
+                    }
                 }
             }
         }

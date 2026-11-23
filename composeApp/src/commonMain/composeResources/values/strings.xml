@@ -1048,4 +1048,5 @@
     <string name="sign_in_failed">Sign-in didn't complete. Try signing in again.</string>
     <string name="account_check_failed">Couldn't reach YouTube to check that account. Try again in a bit.</string>
     <string name="proxy_saved_restart_to_apply">Proxy saved, restart to apply</string>
+    <string name="drag_to_reorder">Drag to reorder</string>
 </resources>
