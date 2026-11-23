@@ -242,7 +242,13 @@ class LinkAwareMediaPlayerHandler(
             PlayerEvent.PlayPause -> setPlaying(link, !link.isPlaying)
             PlayerEvent.Stop -> setPlaying(link, false)
             PlayerEvent.Next -> deviceLink.remote(LinkRemote.Next)
-            PlayerEvent.Previous, PlayerEvent.SkipToPrevious -> deviceLink.remote(LinkRemote.Previous)
+            PlayerEvent.Previous -> deviceLink.remote(LinkRemote.Previous)
+            // The remote's "previous" restarts the song past 3 s; a swipe means the previous song.
+            PlayerEvent.SkipToPrevious ->
+                deviceLink.remote(
+                    remoteQueue.value?.let { row(it.current - 1) }?.let { (at, id) -> LinkRemote.PlayIndex(at, id) }
+                        ?: LinkRemote.Previous,
+                )
             PlayerEvent.Backward -> seekTo(link, link.positionNow() - SKIP_MS)
             PlayerEvent.Forward -> seekTo(link, link.positionNow() + SKIP_MS)
             is PlayerEvent.UpdateProgress -> seekTo(link, (link.durationMs() * playerEvent.newProgress / 100).toLong())
