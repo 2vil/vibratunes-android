@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import com.simohypers.limusic.listentogether.DeviceLinkSession
+import com.simohypers.limusic.listentogether.ListenTogetherSession
 import com.simohypers.limusic.listentogether.LinkConnection
 import com.simohypers.limusic.listentogether.LinkEvent
 import com.simohypers.limusic.listentogether.LinkItem
@@ -59,6 +60,7 @@ private const val TAG = "DeviceLinkBridge"
  */
 class DeviceLinkBridge(
     private val session: DeviceLinkSession,
+    private val listenTogether: ListenTogetherSession,
     private val handler: MediaPlayerHandler,
     private val dataStore: DataStoreManager,
     private val scope: CoroutineScope,
@@ -193,7 +195,11 @@ class DeviceLinkBridge(
         session.events.collect { event ->
             when (event) {
                 is LinkEvent.HostChanged ->
-                    if (event.hostId != session.state.value.selfId) {
+                    // Another device took the link's player seat. In a Listen Together room this
+                    // playback is that session's sync, not ours to stop: pausing here fights the
+                    // room, and a room started between two linked devices lost its first track a
+                    // beat after it began (this pause was the whole fight).
+                    if (event.hostId != session.state.value.selfId && !listenTogether.state.value.inRoom) {
                         onMain { if (handler.player.playWhenReady) handler.player.pause() }
                     }
                 // Back in the room while playing: say so, or the room keeps what it last heard.

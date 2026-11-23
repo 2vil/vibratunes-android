@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +63,7 @@ import com.simohypers.limusic.expect.shareUrl
 import com.simohypers.limusic.ui.component.CodeInput
 import com.simohypers.limusic.ui.component.LimusicLoader
 import com.simohypers.limusic.ui.component.SettingSheet
+import com.simohypers.limusic.expect.ui.rememberQrScannerLauncher
 import com.simohypers.limusic.ui.component.codeOf
 import com.simohypers.limusic.ui.icon.Add
 import com.simohypers.limusic.ui.icon.ArrowForwardIos
@@ -71,6 +73,7 @@ import com.simohypers.limusic.ui.icon.Edit
 import com.simohypers.limusic.ui.icon.Groups
 import com.simohypers.limusic.ui.icon.MoreVert
 import com.simohypers.limusic.ui.icon.PersonAdd
+import com.simohypers.limusic.ui.icon.QrCodeScanner
 import com.simohypers.limusic.ui.icon.Share
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Star
@@ -98,6 +101,7 @@ import limusic.composeapp.generated.resources.ltd_hosting
 import limusic.composeapp.generated.resources.ltd_join
 import limusic.composeapp.generated.resources.ltd_join_requests
 import limusic.composeapp.generated.resources.ltd_join_room
+import limusic.composeapp.generated.resources.devices_scan_qr
 import limusic.composeapp.generated.resources.ltd_join_room_hint
 import limusic.composeapp.generated.resources.ltd_leave_hint_alone
 import limusic.composeapp.generated.resources.ltd_leave_hint_guest
@@ -300,6 +304,20 @@ private fun Start(
                 }
                 Spacer(Modifier.height(16.dp))
                 CodeInput(invite, length = ROOM_CODE_LENGTH) { invite = it }
+                val scanQr =
+                    rememberQrScannerLauncher { text ->
+                        // The host's QR carries the whole invite (`CODE` or `CODE@host`); the
+                        // CodeInput keeps an `@` string whole, so it fills either way.
+                        if (!text.isNullOrBlank()) invite = text
+                    }
+                OutlinedButton(
+                    onClick = { scanQr.launch() },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) {
+                    Icon(LimusicIcons.QrCodeScanner, contentDescription = null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(Res.string.devices_scan_qr), color = LocalContentColor.current)
+                }
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = { go(false) },
