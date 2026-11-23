@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,8 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -56,8 +58,11 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
-/** How far a drag has to travel, in px, before it counts as a swipe. */
-private const val SWIPE_THRESHOLD = 120f
+/** How far a sideways drag has to travel before it skips. In dp so it feels the same on every screen. */
+private val SWIPE_SKIP = 44.dp
+
+/** How far an upward drag has to travel before it opens the full player. */
+private val SWIPE_UP = 22.dp
 
 /**
  * The bar above the tabs while something plays. A tap or an upward swipe opens the full player; a
@@ -79,6 +84,8 @@ fun LimusicMiniPlayer(
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
     val onBackground = MaterialTheme.colorScheme.onSurface
+    // The player's artwork pager mirrors in RTL, so the swipe that means "previous" mirrors too.
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     Column(
         modifier
@@ -94,7 +101,7 @@ fun LimusicMiniPlayer(
                         change.consume()
                         dragged += amount
                     },
-                    onDragEnd = { if (dragged < -SWIPE_THRESHOLD / 2) onOpen() },
+                    onDragEnd = { if (dragged < -SWIPE_UP.toPx()) onOpen() },
                 )
             },
     ) {
@@ -109,8 +116,9 @@ fun LimusicMiniPlayer(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-                    .pointerInput(Unit) {
+                    // Absolute so the row follows the finger in RTL too; offset would mirror it.
+                    .absoluteOffset { IntOffset(offsetX.value.roundToInt(), 0) }
+                    .pointerInput(isRtl) {
                         detectHorizontalDragGestures(
                             onHorizontalDrag = { change, amount ->
                                 change.consume()
@@ -118,9 +126,12 @@ fun LimusicMiniPlayer(
                             },
                             onDragEnd = {
                                 scope.launch {
+                                    // Positive is a swipe towards the end side: right in LTR, left in RTL.
+                                    val towardsEnd = if (isRtl) -offsetX.value else offsetX.value
                                     when {
-                                        offsetX.value > SWIPE_THRESHOLD -> sharedViewModel.onUIEvent(UIEvent.Previous)
-                                        offsetX.value < -SWIPE_THRESHOLD -> sharedViewModel.onUIEvent(UIEvent.Next)
+                                        // SkipToPrevious, not Previous: a swipe means the previous song, never a restart.
+                                        towardsEnd > SWIPE_SKIP.toPx() -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
+                                        towardsEnd < -SWIPE_SKIP.toPx() -> sharedViewModel.onUIEvent(UIEvent.Next)
                                     }
                                     offsetX.animateTo(0f)
                                 }

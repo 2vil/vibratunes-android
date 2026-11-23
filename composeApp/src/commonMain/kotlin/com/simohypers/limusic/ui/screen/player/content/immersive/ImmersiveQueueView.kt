@@ -191,6 +191,7 @@ internal fun ImmersiveQueueView(
         }
 
         var overscrollJob by remember { mutableStateOf<Job?>(null) }
+        val canEdit = !musicServiceHandler.followingRoom
 
         Box(
             modifier =
@@ -207,7 +208,9 @@ internal fun ImmersiveQueueView(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
+                        .pointerInput(canEdit) {
+                            // Same guard as QueueBottomSheet: a room's follower cannot reorder the host's queue.
+                            if (!canEdit) return@pointerInput
                             detectDragGesturesAfterLongPress(
                                 onDrag = { change, dragOffset ->
                                     change.consume()

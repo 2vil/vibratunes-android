@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.PaddingValues
@@ -60,7 +61,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
@@ -139,9 +142,14 @@ fun SongFullWidthItems(
 ) {
     val contentColor = if (forceDark) Color.White else MaterialTheme.colorScheme.onSurface
     val subtitleColor = if (forceDark) Color(0xC4FFFFFF) else MaterialTheme.colorScheme.onSurfaceVariant
-    val maxOffset = 360f
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
+    // In dp so the swipe needs the same finger travel on every screen density.
+    val maxOffset = with(density) { 130.dp.toPx() }
+    // The detector outlives recompositions, so it reads the latest callback through this.
+    val currentOnAddToQueue by rememberUpdatedState(onAddToQueue)
+    // offsetX counts towards the end side, which offset() already mirrors; drag amounts do not mirror.
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val songRepository: SongRepository = koinInject<SongRepository>()
     val downloadState by songRepository
         .getSongAsFlow(songEntity?.videoId ?: track?.videoId ?: "")
@@ -203,27 +211,36 @@ fun SongFullWidthItems(
                                 null
                             },
                     ).animateContentSize()
-                    // Keyed on selectionMode so the swipe detector is torn down when selection
-                    // starts — keyed on Unit it would keep running with the stale flag captured.
-                    .pointerInput(selectionMode) {
+                    // Keyed on every flag the body reads, so the swipe detector is torn down when
+                    // selection starts or the row starts playing, and comes back when it stops.
+                    .pointerInput(selectionMode, isPlaying, onAddToQueue != null, isRtl) {
                         if (!isPlaying && onAddToQueue != null && !selectionMode) {
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { change, dragAmount ->
-                                    if (offsetX.value + dragAmount > 0) {
+                                    // Towards the end side: rightward in LTR, leftward in RTL.
+                                    val towardsEnd = if (isRtl) -dragAmount else dragAmount
+                                    if (offsetX.value + towardsEnd > 0) {
                                         change.consume()
                                         coroutineScope.launch {
                                             offsetX.snapTo(
-                                                (offsetX.value + dragAmount).coerceAtMost(maxOffset),
+                                                (offsetX.value + towardsEnd).coerceAtMost(maxOffset),
                                             )
                                         }
                                     }
                                 },
                                 onDragEnd = {
-                                    if (offsetX.value == maxOffset) {
-                                        onAddToQueue(
+                                    // At or past the end, not only exactly on it: the last snapTo may still be in flight.
+                                    if (offsetX.value >= maxOffset) {
+                                        currentOnAddToQueue?.invoke(
                                             track?.videoId ?: songEntity?.videoId ?: "",
                                         )
                                     }
+                                    coroutineScope.launch {
+                                        offsetX.animateTo(0f)
+                                    }
+                                },
+                                // A cancelled swipe would otherwise leave the row shifted.
+                                onDragCancel = {
                                     coroutineScope.launch {
                                         offsetX.animateTo(0f)
                                     }

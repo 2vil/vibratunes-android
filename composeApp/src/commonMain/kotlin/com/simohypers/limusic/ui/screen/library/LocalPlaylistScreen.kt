@@ -586,11 +586,17 @@ fun LocalPlaylistScreen(
                     songEntity = item,
                     onMoreClickListener = { onItemMoreClick(it) },
                     onClickListener = { onPlaylistItemClick(it) },
-                    onAddToQueue = {
-                        sharedViewModel.addListToQueue(
-                            arrayListOf(item.toTrack()),
-                        )
-                    },
+                    // No swipe to queue while reordering: it would fight the drag for the same finger.
+                    onAddToQueue =
+                        if (changingOrder) {
+                            null
+                        } else {
+                            {
+                                sharedViewModel.addListToQueue(
+                                    arrayListOf(item.toTrack()),
+                                )
+                            }
+                        },
                     selectionMode = selection.active,
                     isSelected = selection.has(rowKey(item.videoId)),
                     // No long press while reordering: that gesture already belongs to drag.
