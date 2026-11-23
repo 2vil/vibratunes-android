@@ -92,6 +92,7 @@ import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveFadeBe
 import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
 import com.simohypers.limusic.ui.theme.AppThemeContent
 import com.simohypers.limusic.ui.theme.typo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import multiplatform.network.cmptoast.ToastGravity
@@ -310,6 +311,10 @@ internal fun QueueList(
     val playingKey = keys.getOrNull(current)
     var followed by remember { mutableStateOf(playingKey) }
     LaunchedEffect(playingKey) {
+        // The list and the play index come down two separate flows, so taking a song out above
+        // the playing one shows for a moment the old index over the new list, which names the
+        // next row as playing. Let that settle, or the list scrolls a row away and back by itself.
+        delay(FOLLOW_SETTLE_MS)
         val from = followed
         followed = playingKey
         if (playingKey == null || from == null || from == playingKey) return@LaunchedEffect
@@ -389,7 +394,9 @@ internal fun QueueList(
                 }
             }
             itemsIndexed(items.take(view.autoplayFrom), key = { i, _ -> keys[i] }) { i, track ->
-                QueueRow(i, track, i == current, dragDropState, onPlay = {
+                QueueRow(i, track, i == current, dragDropState, canRemove = canEdit && i != current, onRemove = {
+                    musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
+                }, onPlay = {
                     clicked = keys[i]
                     musicServiceHandler.playMediaItemInMediaSource(i)
                 }, onMore = { onMore(i, track) })
@@ -421,7 +428,9 @@ internal fun QueueList(
                 }
                 itemsIndexed(items.drop(view.autoplayFrom), key = { j, _ -> keys[view.autoplayFrom + j] }) { j, track ->
                     val i = view.autoplayFrom + j
-                    QueueRow(i, track, i == current, dragDropState, lazy = i + 1, onPlay = {
+                    QueueRow(i, track, i == current, dragDropState, lazy = i + 1, canRemove = canEdit && i != current, onRemove = {
+                        musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId)
+                    }, onPlay = {
                         clicked = keys[i]
                         musicServiceHandler.playMediaItemInMediaSource(i)
                     }, onMore = { onMore(i, track) })
@@ -464,6 +473,7 @@ internal fun QueueList(
 }
 
 private val TOP_FADE = 24.dp
+private const val FOLLOW_SETTLE_MS = 64L
 private val BOTTOM_FADE = 64.dp
 
 /** The song playing: cover, title and artist, then add to playlist (when given), like and its menu. */
@@ -572,6 +582,9 @@ private fun LazyItemScope.QueueRow(
     playing: Boolean,
     dragDropState: DragDropState,
     lazy: Int = index,
+    /** A leftward swipe may take it off the queue: false for the playing row and for a guest. */
+    canRemove: Boolean,
+    onRemove: () -> Boolean,
     onPlay: () -> Unit,
     onMore: () -> Unit,
 ) {
@@ -585,13 +598,21 @@ private fun LazyItemScope.QueueRow(
                 .clip(rounded(8.dp))
                 .then(if (playing) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier),
         ) {
-            SongFullWidthItems(
-                track = track,
-                isPlaying = playing,
-                onClickListener = { onPlay() },
-                onMoreClickListener = { onMore() },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // No swiping while a long-press drag reorders: a diagonal drag would otherwise do both.
+            SwipeToRemoveQueueRow(
+                index = index,
+                videoId = track.videoId,
+                enabled = canRemove && dragDropState.currentIndexOfDraggedItem == null,
+                onRemove = onRemove,
+            ) {
+                SongFullWidthItems(
+                    track = track,
+                    isPlaying = playing,
+                    onClickListener = { onPlay() },
+                    onMoreClickListener = { onMore() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }
