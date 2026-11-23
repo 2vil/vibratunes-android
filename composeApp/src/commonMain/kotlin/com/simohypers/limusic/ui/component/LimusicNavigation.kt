@@ -19,16 +19,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.max
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -82,7 +77,7 @@ fun NavController.navigateToTab(destination: Any) =
  * The bottom tabs. The tab you are in is the last tab on the back stack, so it stays lit on the
  * album or artist pages opened from it. Tapping it there goes back to the tab's root; tapping it on
  * the root calls [onReselect] (scroll to top or refresh). [compact] is the "Compact navigation bar"
- * setting: off, the bar keeps Material's own 80dp.
+ * setting: icons only, centred in a 56dp bar. Off, the bar keeps Material's own 80dp and labels.
  */
 @Composable
 fun LimusicNavigationBar(
@@ -101,7 +96,13 @@ fun LimusicNavigationBar(
     Column(modifier) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NavigationBar(
-            modifier = if (compact) Modifier.height(compactBarHeight()) else Modifier,
+            // NavigationBar pads itself by the system inset, so its height has to include it.
+            modifier =
+                if (compact) {
+                    Modifier.height(CompactBarHeight + NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding())
+                } else {
+                    Modifier
+                },
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
@@ -119,8 +120,9 @@ fun LimusicNavigationBar(
                             navController.navigateToTab(tab.destination)
                         }
                     },
-                    icon = { Icon(tab.icon, contentDescription = null) },
-                    label = { Text(stringResource(tab.label), style = typo().bodySmall) },
+                    // Without its label the icon names the tab, for screen readers.
+                    icon = { Icon(tab.icon, contentDescription = if (compact) stringResource(tab.label) else null) },
+                    label = if (compact) null else ({ Text(stringResource(tab.label), style = typo().bodySmall) }),
                     colors =
                         NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -135,33 +137,9 @@ fun LimusicNavigationBar(
     }
 }
 
-/**
- * Height for the compact bar, system navigation inset included. Each item holds itself at M3's 80dp
- * unless the bar's height caps it, so the bar gets a fixed height: 56dp, or more when a large font
- * scale makes the label taller than 56dp leaves room for.
- */
-@Composable
-private fun compactBarHeight(): Dp {
-    val labelStyle = typo().bodySmall
-    val labelSample = stringResource(Res.string.home)
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val labelHeight =
-        remember(textMeasurer, labelStyle, labelSample, density) {
-            with(density) { textMeasurer.measure(labelSample, labelStyle).size.height.toDp() }
-        }
-    // NavigationBar pads itself by these insets, so its height has to include them.
-    val bottomInset = NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding()
-    return max(LimusicNavigationBarHeight, ItemHeightWithoutLabel + labelHeight) + bottomInset
-}
-
-// M3's 80dp bar is roomier than three tabs need. An item is ItemHeightWithoutLabel plus its
-// label (11sp, ~15dp): about 55dp, so 56dp is the slimmest bar that fits at the default font scale.
-private val LimusicNavigationBarHeight = 56.dp
-
-// What NavigationBarItem stacks besides the label (M3 1.5 placeLabelAndIcon): the 24dp icon, 4dp for
-// the lower half of its indicator pill, 4dp to the label, and at least 4dp above and below the lot.
-private val ItemHeightWithoutLabel = 40.dp
+// Each item holds itself at M3's 80dp unless the bar caps it. With no label, 56dp centres the
+// icon and its 32dp indicator with 12dp either side.
+private val CompactBarHeight = 56.dp
 
 /**
  * The top bar Home and Library share: the title on the left, the tab's own [actions] on the right. Draws below the status bar and nothing behind itself, so the screen decides the ground.

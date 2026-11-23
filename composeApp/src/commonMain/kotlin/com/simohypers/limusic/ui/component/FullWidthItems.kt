@@ -94,7 +94,7 @@ import com.simohypers.limusic.ui.icon.Check
 import com.simohypers.limusic.ui.icon.DownloadForOffline
 import com.simohypers.limusic.ui.icon.DragHandle
 import com.simohypers.limusic.ui.icon.MoreVert
-import com.simohypers.limusic.ui.icon.PlaylistPlay
+import com.simohypers.limusic.ui.icon.PlayCircle
 import com.simohypers.limusic.ui.icon.PushPin
 import com.simohypers.limusic.ui.icon.QueueMusic
 import com.simohypers.limusic.ui.icon.LimusicIcons
@@ -211,7 +211,7 @@ fun SongFullWidthItems(
                 ) {
                     Icon(
                         tint = contentColor,
-                        imageVector = LimusicIcons.PlaylistPlay,
+                        imageVector = LimusicIcons.PlayCircle,
                         contentDescription = stringResource(Res.string.play_next),
                     )
                 }
