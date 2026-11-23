@@ -285,6 +285,7 @@ fun RecentlySongsScreen(
                                             onMoreClickListener = { chosen = track },
                                             onClickListener = { viewModel.play(tracks, indexOf[key] ?: 0) },
                                             onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(track)) },
+                                            onPlayNext = { sharedViewModel.playListNext(arrayListOf(track)) },
                                             selectionMode = selection.active,
                                             isSelected = selection.has(key),
                                             onLongClick = { selection.start(key, track) },

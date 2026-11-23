@@ -62,6 +62,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -91,6 +94,7 @@ import com.simohypers.limusic.ui.icon.Check
 import com.simohypers.limusic.ui.icon.DownloadForOffline
 import com.simohypers.limusic.ui.icon.DragHandle
 import com.simohypers.limusic.ui.icon.MoreVert
+import com.simohypers.limusic.ui.icon.PlaylistPlay
 import com.simohypers.limusic.ui.icon.PushPin
 import com.simohypers.limusic.ui.icon.QueueMusic
 import com.simohypers.limusic.ui.icon.LimusicIcons
@@ -106,6 +110,7 @@ import limusic.composeapp.generated.resources.add_to_queue
 import limusic.composeapp.generated.resources.album
 import limusic.composeapp.generated.resources.artists
 import limusic.composeapp.generated.resources.drag_to_reorder
+import limusic.composeapp.generated.resources.play_next
 import limusic.composeapp.generated.resources.playlist
 import limusic.composeapp.generated.resources.podcasts
 import limusic.composeapp.generated.resources.radio
@@ -132,6 +137,8 @@ fun SongFullWidthItems(
     onMoreClickListener: ((videoId: String) -> Unit)? = null,
     onClickListener: ((videoId: String) -> Unit)? = null,
     onAddToQueue: ((videoId: String) -> Unit)? = null,
+    // The swipe towards the start side; null keeps the row from moving that way.
+    onPlayNext: ((videoId: String) -> Unit)? = null,
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
     onLongClick: ((videoId: String) -> Unit)? = null,
@@ -151,7 +158,9 @@ fun SongFullWidthItems(
     val maxOffset = with(density) { 130.dp.toPx() }
     // The detector outlives recompositions, so it reads the latest callback through this.
     val currentOnAddToQueue by rememberUpdatedState(onAddToQueue)
-    // offsetX counts towards the end side, which offset() already mirrors; drag amounts do not mirror.
+    val currentOnPlayNext by rememberUpdatedState(onPlayNext)
+    // offsetX counts towards the end side (negative: towards the start), which offset() already mirrors;
+    // drag amounts do not mirror.
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val songRepository: SongRepository = koinInject<SongRepository>()
     val downloadState by songRepository
@@ -186,7 +195,52 @@ fun SongFullWidthItems(
                 }
             }
         }
+        // On the end side: the side the row moves away from when swiped towards the start.
+        Crossfade(
+            offsetX.value <= -maxOffset / 2,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) { shouldShowPlayNext ->
+            if (shouldShowPlayNext) {
+                Box(
+                    modifier =
+                        Modifier
+                            .height(heightDp)
+                            .aspectRatio(1f)
+                            .padding(end = 15.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        tint = contentColor,
+                        imageVector = LimusicIcons.PlaylistPlay,
+                        contentDescription = stringResource(Res.string.play_next),
+                    )
+                }
+            }
+        }
         val itemVideoId = track?.videoId ?: songEntity?.videoId ?: ""
+        val swipeEnabled = !isPlaying && !selectionMode
+        // The swipes are the row's only way to these, so screen readers get them as actions.
+        val addToQueueLabel = stringResource(Res.string.add_to_queue)
+        val playNextLabel = stringResource(Res.string.play_next)
+        val swipeActions =
+            if (!swipeEnabled) {
+                emptyList()
+            } else {
+                listOfNotNull(
+                    onAddToQueue?.let { action ->
+                        CustomAccessibilityAction(addToQueueLabel) {
+                            action(itemVideoId)
+                            true
+                        }
+                    },
+                    onPlayNext?.let { action ->
+                        CustomAccessibilityAction(playNextLabel) {
+                            action(itemVideoId)
+                            true
+                        }
+                    },
+                )
+            }
         val accent = MaterialTheme.colorScheme.primary
         // Picking fades the row in and pops the tick, rather than switching in one frame.
         val rowTint by animateColorAsState(if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent, label = "rowTint")
@@ -214,27 +268,36 @@ fun SongFullWidthItems(
                                 null
                             },
                     ).animateContentSize()
+                    .semantics { if (swipeActions.isNotEmpty()) customActions = swipeActions }
                     // Keyed on every flag the body reads, so the swipe detector is torn down when
                     // selection starts or the row starts playing, and comes back when it stops.
-                    .pointerInput(selectionMode, isPlaying, onAddToQueue != null, isRtl) {
-                        if (!isPlaying && onAddToQueue != null && !selectionMode) {
+                    .pointerInput(selectionMode, isPlaying, onAddToQueue != null, onPlayNext != null, isRtl) {
+                        val canAddToQueue = onAddToQueue != null
+                        val canPlayNext = onPlayNext != null
+                        if (swipeEnabled && (canAddToQueue || canPlayNext)) {
                             detectHorizontalDragGestures(
                                 onHorizontalDrag = { change, dragAmount ->
                                     // Towards the end side: rightward in LTR, leftward in RTL.
                                     val towardsEnd = if (isRtl) -dragAmount else dragAmount
-                                    if (offsetX.value + towardsEnd > 0) {
+                                    val next = offsetX.value + towardsEnd
+                                    // Each side moves only when it has an action to fire.
+                                    if ((next > 0 && canAddToQueue) || (next < 0 && canPlayNext)) {
                                         change.consume()
                                         coroutineScope.launch {
                                             offsetX.snapTo(
-                                                (offsetX.value + towardsEnd).coerceAtMost(maxOffset),
+                                                (offsetX.value + towardsEnd).coerceIn(-maxOffset, maxOffset),
                                             )
                                         }
                                     }
                                 },
                                 onDragEnd = {
-                                    // At or past the end, not only exactly on it: the last snapTo may still be in flight.
+                                    // At or past either end, not only exactly on it: the last snapTo may still be in flight.
                                     if (offsetX.value >= maxOffset) {
                                         currentOnAddToQueue?.invoke(
+                                            track?.videoId ?: songEntity?.videoId ?: "",
+                                        )
+                                    } else if (offsetX.value <= -maxOffset) {
+                                        currentOnPlayNext?.invoke(
                                             track?.videoId ?: songEntity?.videoId ?: "",
                                         )
                                     }

@@ -425,6 +425,11 @@ fun PlaylistScreen(
                                             arrayListOf(item),
                                         )
                                     },
+                                    onPlayNext = {
+                                        sharedViewModel.playListNext(
+                                            arrayListOf(item),
+                                        )
+                                    },
                                     selectionMode = selection.active,
                                     isSelected = selection.has(key),
                                     onLongClick = { selection.start(key, item) },

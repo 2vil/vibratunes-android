@@ -176,6 +176,7 @@ internal fun LazyGridScope.searchResults(
             onMoreClickListener = { onSongMenu(track) },
             onClickListener = { viewModel.playFromSearch(track, query, clickType) },
             onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(track)) },
+            onPlayNext = { sharedViewModel.playListNext(arrayListOf(track)) },
             selectionMode = selection.active,
             isSelected = selection.has(rowKey(track.videoId)),
             onLongClick = { selection.start(rowKey(track.videoId), track) },
