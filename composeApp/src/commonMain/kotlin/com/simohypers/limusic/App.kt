@@ -72,6 +72,7 @@ import com.simohypers.limusic.ui.navigation.destination.player.FullscreenDestina
 import com.simohypers.limusic.ui.navigation.graph.AppNavigationGraph
 import com.simohypers.limusic.ui.component.LimusicMiniPlayer
 import com.simohypers.limusic.ui.component.LimusicNavigationBar
+import com.simohypers.limusic.ui.component.BottomNavScreen
 import com.simohypers.limusic.ui.component.navigateToTab
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreen
 import com.simohypers.limusic.ui.screen.player.NowPlayingScreenContent
@@ -112,6 +113,14 @@ fun App(
     // same condition that used to hide the chip inside Library.
     val isYouTubeLoggedIn by viewModel.getYouTubeLoggedIn().collectAsStateWithLifecycle(DataStoreManager.FALSE)
     val showMixForYouTab = isYouTubeLoggedIn == TRUE
+
+    val bottomBarTabsString by viewModel.bottomBarTabs.collectAsStateWithLifecycle(initialValue = DataStoreManager.DEFAULT_BOTTOM_BAR_TABS)
+    val lockedLibraryChip by viewModel.lockedLibraryChip.collectAsStateWithLifecycle()
+    val activeBottomTabs = remember(bottomBarTabsString, showMixForYouTab) {
+        BottomNavScreen.parseTabs(bottomBarTabsString).filter { tab ->
+            if (tab == BottomNavScreen.MixForYou) showMixForYouTab else true
+        }.ifEmpty { listOf(BottomNavScreen.Home, BottomNavScreen.Search, BottomNavScreen.Library) }
+    }
 
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val appearance by viewModel.appearance.collectAsStateWithLifecycle()
@@ -389,9 +398,17 @@ fun App(
                                     modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 6.dp),
                                 )
                             }
-                            LimusicNavigationBar(navController = navController) { klass ->
-                                viewModel.reloadDestination(klass)
-                            }
+                            LimusicNavigationBar(
+                                navController = navController,
+                                tabs = activeBottomTabs,
+                                onLibraryTabRequest = { chip, locked ->
+                                    viewModel.requestLibraryTab(chip)
+                                    viewModel.setLockedLibraryChip(if (locked) chip else null)
+                                },
+                                onReselect = { klass ->
+                                    viewModel.reloadDestination(klass)
+                                },
+                            )
                         }
                     }
                 }
@@ -436,6 +453,8 @@ fun App(
                                 AppNavigationGraph(
                                     innerPadding = innerPadding,
                                     navController = navController,
+                                    tabs = activeBottomTabs,
+                                    currentLibraryChip = lockedLibraryChip ?: LibraryChipType.YOUR_LIBRARY,
                                     hideNavBar = {
                                         isNavBarVisible = false
                                     },
