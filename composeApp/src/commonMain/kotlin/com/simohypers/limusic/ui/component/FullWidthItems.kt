@@ -40,9 +40,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -147,6 +149,8 @@ fun SongFullWidthItems(
     rightView: @Composable (() -> Unit)? = null,
     forceDark: Boolean = LocalForceDarkText.current,
     padding: PaddingValues = PaddingValues(start = 23.dp, end = 15.dp, top = 6.dp, bottom = 6.dp),
+    // Before the ⋯, in the subtitle colour: a queue row's drag handle.
+    trailingView: @Composable (() -> Unit)? = null,
     // Before the cover, inside the row's tap and tint: a chart's rank.
     leadingView: @Composable (() -> Unit)? = null,
 ) {
@@ -492,21 +496,11 @@ fun SongFullWidthItems(
                 if (rightView != null) {
                     rightView()
                 }
-                // Hidden while selecting: the per-item menu moves up to the selection app bar,
-                // so one tap cannot mean both "act on this song" and "pick this song".
-                if (onMoreClickListener != null && !selectionMode) {
-                    RippleIconButton(imageVector = LimusicIcons.MoreVert, fillMaxSize = false, tint = contentColor) {
-                        if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
-                    }
-                }
-                AnimatedVisibility(
-                    shouldShowDragHandle,
-                    enter = fadeIn() + expandHorizontally(),
-                    exit = fadeOut() + shrinkHorizontally(),
-                ) {
-                    // 48dp so the handle is easy to grab with a thumb.
+                // The drag handle sits left of the ⋯, so the ⋯ stays where it is on every row.
+                AnimatedVisibility(shouldShowDragHandle, enter = handleEnter(isRtl), exit = handleExit(isRtl)) {
+                    // 48dp tall so the handle is easy to grab with a thumb.
                     Box(
-                        modifier = Modifier.size(48.dp).then(dragHandleModifier),
+                        modifier = Modifier.size(width = DragHandleWidth, height = 48.dp).then(dragHandleModifier),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -514,6 +508,16 @@ fun SongFullWidthItems(
                             contentDescription = stringResource(Res.string.drag_to_reorder),
                             tint = contentColor,
                         )
+                    }
+                }
+                if (trailingView != null) {
+                    CompositionLocalProvider(LocalContentColor provides subtitleColor) { trailingView() }
+                }
+                // Hidden while selecting: the per-item menu moves up to the selection app bar,
+                // so one tap cannot mean both "act on this song" and "pick this song".
+                if (onMoreClickListener != null && !selectionMode) {
+                    RippleIconButton(imageVector = LimusicIcons.MoreVert, fillMaxSize = false, tint = contentColor) {
+                        if (itemVideoId.isNotBlank()) onMoreClickListener.invoke(itemVideoId)
                     }
                 }
             }
