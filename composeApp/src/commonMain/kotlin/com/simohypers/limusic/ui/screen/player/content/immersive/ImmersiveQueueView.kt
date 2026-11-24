@@ -53,9 +53,12 @@ import com.simohypers.limusic.domain.mediaservice.handler.QueueData
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
 import com.simohypers.limusic.expect.ui.DeviceVolumeController
 import com.simohypers.limusic.ui.component.DraggableItem
+import com.simohypers.limusic.ui.component.QuickLongPressBox
+import com.simohypers.limusic.ui.component.ReorderHandle
 import com.simohypers.limusic.ui.component.SongFullWidthItems
 import com.simohypers.limusic.ui.component.SwipeToRemoveQueueRow
 import com.simohypers.limusic.ui.component.rememberDragDropState
+import com.simohypers.limusic.ui.component.translucentLift
 import com.simohypers.limusic.ui.icon.Info
 import com.simohypers.limusic.ui.icon.PlaylistAdd
 import com.simohypers.limusic.ui.icon.Repeat
@@ -102,7 +105,6 @@ internal fun ImmersiveQueueView(
     musicServiceHandler: MediaPlayerHandler = koinInject(),
 ) {
     val localDensity = LocalDensity.current
-    val coroutineScope = rememberCoroutineScope()
 
     // Upcoming tracks live in the SAME index space as musicServiceHandler.moveInQueue(from, to) and
     // removeMediaItem(index): artworkQueue == queueData.data.listTracks, and both operations
@@ -168,9 +170,9 @@ internal fun ImmersiveQueueView(
         )
 
         val lazyListState = rememberLazyListState()
-        // rememberDragDropState stores this lambda in remember(lazyListState), so it is frozen at
-        // FIRST composition — capturing `offset` directly would keep using the offset from the
-        // track that was playing back then and swap the wrong two rows after any track change.
+        // A Listen Together guest follows the host's queue and can't reorder or take songs out of it.
+        val canEdit = !musicServiceHandler.followingRoom
+        // The offset at the drop, not at the first frame: the track playing may have changed since.
         val currentOffset by rememberUpdatedState(offset)
         // The list is upcoming tracks only, so its first row is the one right after the playing
         // song (shown in the header above): a row stops there, and pulling it further says why.
@@ -178,11 +180,12 @@ internal fun ImmersiveQueueView(
         val dragDropState =
             rememberDragDropState(
                 lazyListState,
-                minIndex = 0,
+                canMoveTo = { canEdit && it in upcoming.indices },
                 onBlocked = { showToast(belowPlaying, ToastGravity.Bottom) },
             ) { from, to ->
                 actions.onMoveQueueItem(from + currentOffset, to + currentOffset)
             }
+        val rows = dragDropState.arrange(upcoming)
 
         // Follow the track change. The list holds only what is still to come, so every time the
         // player advances the row that was at the top leaves it and everything shifts up by one —
@@ -195,80 +198,97 @@ internal fun ImmersiveQueueView(
             }
         }
 
-        val canEdit = !musicServiceHandler.followingRoom
-
         Box(
             modifier =
                 Modifier
                     .weight(1f)
                     .immersiveVerticalFadeEdges(topFade = QUEUE_TOP_FADE, bottomFade = QUEUE_BOTTOM_FADE),
         ) {
-            LazyColumn(
-                state = lazyListState,
-                // Space at BOTH ends equal to the fade at that end, so each fade lands on blank
-                // space instead of dissolving a real row. Only the bottom had it, which is why the
-                // first upcoming track — the one you most want to read — came up half faded out.
-                contentPadding = PaddingValues(top = QUEUE_TOP_FADE, bottom = QUEUE_BOTTOM_FADE),
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .pointerInput(canEdit) {
-                            // Same guard as QueueBottomSheet: a room's follower cannot reorder the host's queue.
-                            if (!canEdit) return@pointerInput
-                            detectDragGesturesAfterLongPress(
-                                onDrag = { change, dragOffset ->
-                                    change.consume()
-                                    // Also scrolls the list while the finger is near its top or bottom.
-                                    dragDropState.onDrag(offset = dragOffset)
-                                },
-                                onDragStart = { dragStartOffset -> dragDropState.onDragStart(dragStartOffset) },
-                                onDragEnd = {
-                                    dragDropState.onDragInterrupted(true)
-                                },
-                                onDragCancel = {
-                                    dragDropState.onDragInterrupted()
-                                },
-                            )
-                        },
+            QuickLongPressBox(
+                gesture =
+                    Modifier.pointerInput(canEdit) {
+                        // Same guard as QueueBottomSheet: a room's follower cannot reorder the host's queue.
+                        if (!canEdit) return@pointerInput
+                        detectDragGesturesAfterLongPress(
+                            onDrag = { change, dragOffset ->
+                                change.consume()
+                                // Also scrolls the list while the row is held near its top or bottom.
+                                dragDropState.onDrag(dragOffset)
+                            },
+                            onDragStart = { dragStartOffset -> dragDropState.onDragStart(dragStartOffset) },
+                            onDragEnd = { dragDropState.onDragInterrupted(true) },
+                            onDragCancel = { dragDropState.onDragInterrupted() },
+                        )
+                    },
+                modifier = Modifier.fillMaxSize(),
             ) {
-                itemsIndexed(
-                    upcoming,
-                    // Absolute index in the key: `upcoming` is a sublist, so a bare local index
-                    // shifts on every track change and invalidates every row.
-                    key = { _, item -> rowKeys.getOrElse(item.index) { item.value.videoId } },
-                ) { localIndex, item ->
-                    val track = item.value
-                    // The queue-wide index this row actually has. Everything the PLAYER is told
-                    // uses this; only the drag gesture below uses localIndex, because that one is
-                    // genuinely about position within the visible list.
-                    val queueIndex = item.index
-                    DraggableItem(
-                        dragDropState = dragDropState,
-                        index = localIndex,
-                        modifier = Modifier,
-                    ) { _ ->
-                        // A leftward swipe takes it off the queue, like the queue sheet's rows: these
-                        // are all upcoming, so only a guest (or a reorder under way) can't.
-                        SwipeToRemoveQueueRow(
-                            index = queueIndex,
-                            videoId = track.videoId,
-                            enabled = canEdit && dragDropState.currentIndexOfDraggedItem == null,
-                            onRemove = { actions.onRemoveQueueItem(queueIndex, track.videoId) },
-                        ) {
-                            // Owner's call: the OLD queue sheet's row component, verbatim — no bespoke
-                            // row. Long-press-drag reorders (list-level gesture above); ⋯ opens the
-                            // full song sheet with the queue's own rows, hosted by the player screen.
-                            SongFullWidthItems(
-                                track = track,
-                                isPlaying = false,
-                                modifier = Modifier.fillMaxWidth(),
-                                onClickListener = { videoId ->
-                                    if (videoId == track.videoId) actions.onSeekToQueueIndex(queueIndex)
-                                },
-                                onMoreClickListener = {
-                                    actions.onQueueItemMore(queueIndex, track)
-                                },
-                            )
+                LazyColumn(
+                    state = lazyListState,
+                    // Space at BOTH ends equal to the fade at that end, so each fade lands on blank
+                    // space instead of dissolving a real row. Only the bottom had it, which is why the
+                    // first upcoming track — the one you most want to read — came up half faded out.
+                    contentPadding = PaddingValues(top = QUEUE_TOP_FADE, bottom = QUEUE_BOTTOM_FADE),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(
+                        rows,
+                        // Absolute index in the key: `upcoming` is a sublist, so a bare local index
+                        // shifts on every track change and invalidates every row.
+                        key = { _, item -> rowKeys.getOrElse(item.index) { item.value.videoId } },
+                    ) { localIndex, item ->
+                        val track = item.value
+                        // The queue-wide index this row actually has. Everything the PLAYER is told
+                        // uses this; only the drag gesture below uses localIndex, because that one is
+                        // genuinely about position within the visible list.
+                        val queueIndex = item.index
+                        DraggableItem(
+                            dragDropState = dragDropState,
+                            index = localIndex,
+                            key = rowKeys.getOrElse(queueIndex) { track.videoId },
+                            modifier = Modifier,
+                            // A white veil, like the rows' white text: the blurred cover stays visible through it.
+                            liftColor = translucentLift(Color.White),
+                        ) { _ ->
+                            // A leftward swipe takes it off the queue, like the queue sheet's rows: these
+                            // are all upcoming, so only a guest (or a reorder under way) can't.
+                            SwipeToRemoveQueueRow(
+                                index = queueIndex,
+                                videoId = track.videoId,
+                                enabled = canEdit && dragDropState.currentIndexOfDraggedItem == null,
+                                onRemove = { actions.onRemoveQueueItem(queueIndex, track.videoId) },
+                            ) {
+                                // Owner's call: the OLD queue sheet's row component, verbatim — no bespoke
+                                // row. Its handle, or a long press (list-level gesture above), reorders; ⋯ opens the
+                                // full song sheet with the queue's own rows, hosted by the player screen.
+                                SongFullWidthItems(
+                                    track = track,
+                                    isPlaying = false,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClickListener = { videoId ->
+                                        if (videoId == track.videoId) actions.onSeekToQueueIndex(queueIndex)
+                                    },
+                                    onMoreClickListener = {
+                                        actions.onQueueItemMore(queueIndex, track)
+                                    },
+                                    // The handle's 48dp brings its own room at the end.
+                                    padding = PaddingValues(start = 23.dp, end = if (canEdit) 4.dp else 15.dp, top = 6.dp, bottom = 6.dp),
+                                    trailingView =
+                                        if (canEdit) {
+                                            {
+                                                val up = { actions.onMoveQueueItem(queueIndex, queueIndex - 1) }
+                                                val down = { actions.onMoveQueueItem(queueIndex, queueIndex + 1) }
+                                                ReorderHandle(
+                                                    dragDropState,
+                                                    index = localIndex,
+                                                    onMoveUp = up.takeIf { localIndex > 0 },
+                                                    onMoveDown = down.takeIf { localIndex < rows.lastIndex },
+                                                )
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                )
+                            }
                         }
                     }
                 }

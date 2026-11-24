@@ -125,6 +125,7 @@ import com.simohypers.limusic.ui.component.SuggestItems
 import com.simohypers.limusic.ui.component.painterPlaylistThumbnail
 import com.simohypers.limusic.ui.component.pillSurface
 import com.simohypers.limusic.ui.component.rememberDragDropState
+import com.simohypers.limusic.ui.component.tonalLift
 import com.simohypers.limusic.ui.component.selection.TrackSelectionBar
 import com.simohypers.limusic.ui.component.selection.keyedRows
 import com.simohypers.limusic.ui.component.selection.rememberTrackSelection
@@ -341,6 +342,8 @@ fun LocalPlaylistScreen(
                 WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
                     if (shouldHideTopBar) TOP_BAR_HEIGHT else 0.dp,
             coveredBottom = innerPadding.calculateBottomPadding(),
+            // Tracks start at lazy index 1, under the header.
+            canMoveTo = { it in 1..(tracks?.size ?: 0) },
         ) { from, to ->
             coroutineScope.launch {
                 Logger.d(TAG, "onMove from $from to $to")
@@ -638,7 +641,7 @@ fun LocalPlaylistScreen(
             }
         }
         // The row id stays with a song through a re-sort or a drag, so rows animate to their place.
-        itemsIndexed(tracks.orEmpty(), key = { _, row -> row.second.id }) { index, row ->
+        itemsIndexed(dragDropState.arrange(tracks.orEmpty(), base = 1), key = { _, row -> row.second.id }) { index, row ->
             val item = row.first
             val content = @Composable { mod: Modifier ->
                 SongFullWidthItems(
@@ -692,10 +695,13 @@ fun LocalPlaylistScreen(
                 )
             }
             if (changingOrder) {
+                // It places itself (animateItem included): one more here would animate it twice.
                 DraggableItem(
                     dragDropState,
                     index + 1,
-                    Modifier.animateItem(),
+                    key = row.second.id,
+                    modifier = Modifier,
+                    liftColor = tonalLift(background, MaterialTheme.colorScheme.onSurface),
                 ) {
                     content(Modifier)
                 }

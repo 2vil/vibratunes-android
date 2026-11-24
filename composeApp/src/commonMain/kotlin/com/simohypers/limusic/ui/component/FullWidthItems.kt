@@ -40,9 +40,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -147,6 +149,8 @@ fun SongFullWidthItems(
     rightView: @Composable (() -> Unit)? = null,
     forceDark: Boolean = LocalForceDarkText.current,
     padding: PaddingValues = PaddingValues(start = 23.dp, end = 15.dp, top = 6.dp, bottom = 6.dp),
+    // After the ⋯, in the subtitle colour: a queue row's drag handle.
+    trailingView: @Composable (() -> Unit)? = null,
     // Before the cover, inside the row's tap and tint: a chart's rank.
     leadingView: @Composable (() -> Unit)? = null,
 ) {
@@ -515,6 +519,9 @@ fun SongFullWidthItems(
                             tint = contentColor,
                         )
                     }
+                }
+                if (trailingView != null) {
+                    CompositionLocalProvider(LocalContentColor provides subtitleColor) { trailingView() }
                 }
             }
         }
