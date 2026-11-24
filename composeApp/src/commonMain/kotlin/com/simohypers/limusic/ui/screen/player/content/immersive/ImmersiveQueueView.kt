@@ -2,6 +2,12 @@
 
 package com.simohypers.limusic.ui.screen.player.content.immersive
 
+import com.simohypers.limusic.ui.component.QueueLockIcon
+import limusic.composeapp.generated.resources.drag_to_reorder
+import com.simohypers.limusic.ui.icon.Lock
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -153,9 +159,15 @@ internal fun ImmersiveQueueView(
                 ),
         )
         ImmersiveCompactHeader(state = state, actions = actions, typography = typography)
+        // A Listen Together guest follows the host's queue and can't reorder or take songs out of it.
+        val canEdit = !musicServiceHandler.followingRoom
+        // Unlocked: the rows show their drag handles and a long press drags too.
+        var reordering by rememberSaveable { mutableStateOf(false) }
         ImmersiveQueuePillsRow(
             state = state,
             actions = actions,
+            reordering = reordering.takeIf { canEdit },
+            onReorderingChange = { reordering = it },
             activePillContainer = activePillContainer,
             activePillContent = activePillContent,
             modifier = Modifier.padding(top = 4.dp, bottom = if (state.isShort) 8.dp else 20.dp),
@@ -170,8 +182,6 @@ internal fun ImmersiveQueueView(
         )
 
         val lazyListState = rememberLazyListState()
-        // A Listen Together guest follows the host's queue and can't reorder or take songs out of it.
-        val canEdit = !musicServiceHandler.followingRoom
         // The offset at the drop, not at the first frame: the track playing may have changed since.
         val currentOffset by rememberUpdatedState(offset)
         // The list is upcoming tracks only, so its first row is the one right after the playing
@@ -206,9 +216,9 @@ internal fun ImmersiveQueueView(
         ) {
             QuickLongPressBox(
                 gesture =
-                    Modifier.pointerInput(canEdit) {
-                        // Same guard as QueueBottomSheet: a room's follower cannot reorder the host's queue.
-                        if (!canEdit) return@pointerInput
+                    Modifier.pointerInput(canEdit, reordering) {
+                        // Same guards as QueueBottomSheet: locked, or a room's follower, nothing moves.
+                        if (!canEdit || !reordering) return@pointerInput
                         detectDragGesturesAfterLongPress(
                             onDrag = { change, dragOffset ->
                                 change.consume()
@@ -270,8 +280,6 @@ internal fun ImmersiveQueueView(
                                     onMoreClickListener = {
                                         actions.onQueueItemMore(queueIndex, track)
                                     },
-                                    // The handle's 48dp brings its own room at the end.
-                                    padding = PaddingValues(start = 23.dp, end = if (canEdit) 4.dp else 15.dp, top = 6.dp, bottom = 6.dp),
                                     trailingView =
                                         if (canEdit) {
                                             {
@@ -282,6 +290,7 @@ internal fun ImmersiveQueueView(
                                                     index = localIndex,
                                                     onMoveUp = up.takeIf { localIndex > 0 },
                                                     onMoveDown = down.takeIf { localIndex < rows.lastIndex },
+                                                    visible = reordering,
                                                 )
                                             }
                                         } else {
@@ -310,11 +319,16 @@ internal fun ImmersiveQueueView(
     }
 }
 
-/** [LimusicIcons.Info] [LimusicIcons.PlaylistAdd] [LimusicIcons.Shuffle] [LimusicIcons.Repeat] — exactly, per the corrected spec. */
+/**
+ * [LimusicIcons.Info] [LimusicIcons.PlaylistAdd] [LimusicIcons.Shuffle] [LimusicIcons.Repeat], then
+ * the queue's lock (open while [reordering]) unless [reordering] is null (a guest).
+ */
 @Composable
 private fun ImmersiveQueuePillsRow(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
+    reordering: Boolean?,
+    onReorderingChange: (Boolean) -> Unit,
     activePillContainer: Color,
     activePillContent: Color,
     modifier: Modifier = Modifier,
@@ -356,6 +370,24 @@ private fun ImmersiveQueuePillsRow(
             onClick = { actions.onUIEvent(UIEvent.Repeat) },
             modifier = Modifier.weight(1f),
         )
+        if (reordering != null) {
+            ImmersiveQueuePill(
+                icon = LimusicIcons.Lock,
+                active = reordering,
+                activeContainer = activePillContainer,
+                activeContent = activePillContent,
+                onClick = { onReorderingChange(!reordering) },
+                modifier = Modifier.weight(1f),
+                iconContent = { tint ->
+                    QueueLockIcon(
+                        open = reordering,
+                        contentDescription = stringResource(Res.string.drag_to_reorder),
+                        tint = tint,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -367,6 +399,8 @@ private fun ImmersiveQueuePill(
     activeContent: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // Drawn instead of [icon] when given, in the pill's icon colour.
+    iconContent: (@Composable (tint: Color) -> Unit)? = null,
 ) {
     Box(
         modifier =
@@ -380,12 +414,17 @@ private fun ImmersiveQueuePill(
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = "",
-            tint = if (active) activeContent else Color.White,
-            modifier = Modifier.size(20.dp),
-        )
+        val tint = if (active) activeContent else Color.White
+        if (iconContent != null) {
+            iconContent(tint)
+        } else {
+            Icon(
+                imageVector = icon,
+                contentDescription = "",
+                tint = tint,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

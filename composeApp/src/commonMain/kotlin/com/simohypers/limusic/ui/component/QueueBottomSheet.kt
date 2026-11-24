@@ -1,5 +1,17 @@
 package com.simohypers.limusic.ui.component
 
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.Crossfade
+import limusic.composeapp.generated.resources.drag_to_reorder
+import com.simohypers.limusic.ui.icon.Lock
+import com.simohypers.limusic.ui.icon.LockOpen
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -135,6 +147,7 @@ fun QueueBottomSheet(
         val nowPlaying by musicServiceHandler.nowPlaying.collectAsStateWithLifecycle()
         val control by musicServiceHandler.controlState.collectAsStateWithLifecycle()
         var nowPlayingMore by remember { mutableStateOf(false) }
+        var reordering by rememberSaveable { mutableStateOf(false) }
         // The row whose ⋮ was tapped, as its queue position and the track that was there.
         var moreFor by remember { mutableStateOf<Pair<Int, Track>?>(null) }
 
@@ -169,18 +182,23 @@ fun QueueBottomSheet(
             Box(Modifier.fillMaxSize()) {
                 if (isLyricsBlurSupported()) FrostedCover(nowPlaying?.metadata?.artworkUri, wash = colors.container, washFrom = 0.62f, washTo = 0.85f)
                 Column(Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())) {
-                    QueueTopBar(onClose = {
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                        }
-                    })
+                    QueueTopBar(
+                        onClose = {
+                            scope.launch {
+                                sheetState.hide()
+                                onDismiss()
+                            }
+                        },
+                        reordering = reordering,
+                        onReorderingChange = { reordering = it },
+                    )
                     QueueActions()
                     QueueList(
                         onMore = { index, track -> moreFor = index to track },
                         bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                         // Over the frosted cover where there is one; otherwise the plain sheet.
                         overCover = isLyricsBlurSupported(),
+                        reordering = reordering,
                         modifier = Modifier.weight(1f),
                     ) {
                         nowPlaying?.takeIf { it.mediaId.isNotEmpty() }?.let { item ->
@@ -200,10 +218,16 @@ fun QueueBottomSheet(
     }
 }
 
-/** The chevron ([onClose]), "Queue" over where it plays from and what is left, then the Autoplay switch. */
+/**
+ * The chevron ([onClose]), "Queue" over where it plays from and what is left, then the lock
+ * ([reordering] when open: the rows can be dragged, by their handles or a long press) and the
+ * Autoplay switch.
+ */
 @Composable
 internal fun QueueTopBar(
     onClose: () -> Unit,
+    reordering: Boolean,
+    onReorderingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     musicServiceHandler: MediaPlayerHandler = koinInject(),
     dataStoreManager: DataStoreManager = koinInject(),
@@ -233,6 +257,18 @@ internal fun QueueTopBar(
         }
         // A guest follows the host: no switch, no clearing, no reordering of its own.
         if (!musicServiceHandler.followingRoom && items.isNotEmpty()) {
+            IconToggleButton(
+                checked = reordering,
+                onCheckedChange = onReorderingChange,
+                colors =
+                    IconButtonDefaults.iconToggleButtonColors(
+                        contentColor = colors.subtitle,
+                        checkedContentColor = MaterialTheme.colorScheme.primary,
+                        checkedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    ),
+            ) {
+                QueueLockIcon(open = reordering, contentDescription = stringResource(Res.string.drag_to_reorder))
+            }
             Text(stringResource(Res.string.endless_queue), style = typo().labelSmall, color = colors.subtitle)
             Switch(
                 checked = autoplay,
@@ -261,6 +297,8 @@ internal fun QueueList(
     bottomInset: Dp,
     /** The list is drawn over the cover (a blur or its colours), not on a solid surface: picks the dragged row's lift. */
     overCover: Boolean,
+    /** Unlocked: the upcoming rows show their drag handles and a long press drags too. */
+    reordering: Boolean,
     modifier: Modifier = Modifier,
     musicServiceHandler: MediaPlayerHandler = koinInject(),
     dataStoreManager: DataStoreManager = koinInject(),
@@ -371,8 +409,8 @@ internal fun QueueList(
         QuickLongPressBox(
             gesture =
                 // Not keyed on the playing index: a song ending mid-drag mustn't drop the row in hand.
-                Modifier.pointerInput(canEdit) {
-                    if (!canEdit) return@pointerInput
+                Modifier.pointerInput(canEdit, reordering) {
+                    if (!canEdit || !reordering) return@pointerInput
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
                             // Only songs, not the divider; canMoveTo keeps it to the upcoming ones.
@@ -441,6 +479,7 @@ internal fun QueueList(
                         liftColor = liftColor,
                         canRemove = canEdit && i != current,
                         movable = movable,
+                        reordering = reordering,
                         onMoveUp = if (movable && i - 1 > current) ({ musicServiceHandler.moveInQueue(i, i - 1) }) else null,
                         onMoveDown = if (movable && i + 1 < items.size) ({ musicServiceHandler.moveInQueue(i, i + 1) }) else null,
                         onRemove = { musicServiceHandler.removeFromQueueIfStillThere(i, track.videoId) },
@@ -572,6 +611,33 @@ private fun queueSummary(
     return parts.joinToString(" · ")
 }
 
+/**
+ * The queue's lock, open while the rows can be reordered. A change crossfades it and swings it a
+ * little, the way a padlock gives when it clicks; the first frame shows it as it is.
+ */
+@Composable
+internal fun QueueLockIcon(
+    open: Boolean,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = LocalContentColor.current,
+) {
+    val swing = remember { Animatable(0f) }
+    var shown by remember { mutableStateOf(open) }
+    LaunchedEffect(open) {
+        if (open == shown) return@LaunchedEffect
+        shown = open
+        swing.snapTo(if (open) -LOCK_SWING_DEGREES else LOCK_SWING_DEGREES)
+        swing.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    Crossfade(open, animationSpec = tween(LOCK_FADE_MS), modifier = modifier.graphicsLayer { rotationZ = swing.value }, label = "queueLock") { isOpen ->
+        Icon(if (isOpen) LimusicIcons.LockOpen else LimusicIcons.Lock, contentDescription = contentDescription, tint = tint)
+    }
+}
+
+private const val LOCK_SWING_DEGREES = 10f
+private const val LOCK_FADE_MS = 150
+
 /** "Back to …" and Clear queue, only when one of them applies. */
 @Composable
 internal fun QueueActions(musicServiceHandler: MediaPlayerHandler = koinInject()) {
@@ -620,8 +686,10 @@ private fun LazyItemScope.QueueRow(
     liftColor: Color,
     /** A leftward swipe may take it off the queue: false for the playing row and for a guest. */
     canRemove: Boolean,
-    /** Shows the drag handle: an upcoming row, and not for a guest. */
+    /** Has a drag handle: an upcoming row, and not for a guest. */
     movable: Boolean,
+    /** The queue is unlocked: the handle shows. */
+    reordering: Boolean,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     onRemove: () -> Boolean,
@@ -657,11 +725,9 @@ private fun LazyItemScope.QueueRow(
                     onClickListener = { onPlay() },
                     onMoreClickListener = { onMore() },
                     modifier = Modifier.fillMaxWidth(),
-                    // The handle's 48dp brings its own room at the end.
-                    padding = PaddingValues(start = 23.dp, end = if (movable) 4.dp else 15.dp, top = 6.dp, bottom = 6.dp),
                     trailingView =
                         if (movable) {
-                            { ReorderHandle(dragDropState, index = lazy, onMoveUp = onMoveUp, onMoveDown = onMoveDown) }
+                            { ReorderHandle(dragDropState, index = lazy, onMoveUp = onMoveUp, onMoveDown = onMoveDown, visible = reordering) }
                         } else {
                             null
                         },

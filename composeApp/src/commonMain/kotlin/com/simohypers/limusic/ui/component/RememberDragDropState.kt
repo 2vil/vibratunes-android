@@ -1,10 +1,19 @@
 package com.simohypers.limusic.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -48,6 +57,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -56,6 +66,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.simohypers.limusic.logger.Logger
@@ -223,6 +234,9 @@ fun LazyItemScope.DraggableItem(
     }
 }
 
+// A row's drag handle: full height to grab, narrower than 48dp so it sits closer to the row's ⋯.
+internal val DragHandleWidth = 36.dp
+
 private const val LIFT_SCALE = 0.03f
 private val LIFT_ELEVATION = 8.dp
 private val SOFT_SHADOW = Color.Black.copy(alpha = 0.35f)
@@ -256,6 +270,30 @@ fun ReorderHandle(
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** Shown: it comes out from under the row's ⋯ and goes back into it ([handleEnter], [handleExit]). */
+    visible: Boolean = true,
+) {
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    AnimatedVisibility(visible, enter = handleEnter(rtl), exit = handleExit(rtl)) {
+        ReorderHandleBox(dragDropState, index, onMoveUp, onMoveDown, modifier)
+    }
+}
+
+// A row's drag handle sits just before its ⋯, at the row's end: it fades in sliding out from under
+// the ⋯ while its room opens, and folds back the same way.
+internal fun handleEnter(rtl: Boolean): EnterTransition =
+    fadeIn() + expandHorizontally(expandFrom = Alignment.End) + slideInHorizontally { if (rtl) -it else it }
+
+internal fun handleExit(rtl: Boolean): ExitTransition =
+    fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.End) + slideOutHorizontally { if (rtl) -it else it }
+
+@Composable
+private fun ReorderHandleBox(
+    dragDropState: DragDropState,
+    index: Int,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
+    modifier: Modifier,
 ) {
     val currentIndex by rememberUpdatedState(index)
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -264,7 +302,7 @@ fun ReorderHandle(
     val downLabel = stringResource(Res.string.move_down)
     Box(
         modifier
-            .size(48.dp)
+            .size(width = DragHandleWidth, height = 48.dp)
             .onGloballyPositioned { coordinates[0] = it }
             .pointerInput(dragDropState) {
                 awaitEachGesture {

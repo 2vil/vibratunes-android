@@ -427,12 +427,18 @@ private fun QueueView(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
 ) {
+    var reordering by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         // Lined up with the player's own top row, so the chevron stays put across views.
-        QueueTopBar(onClose = actions.onDismiss, modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 8.dp))
+        QueueTopBar(
+            onClose = actions.onDismiss,
+            reordering = reordering,
+            onReorderingChange = { reordering = it },
+            modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 8.dp),
+        )
         QueueActions()
         // Over the player's frosted cover, or its cover-coloured gradient before Android 12.
-        QueueList(onMore = actions.onQueueItemMore, bottomInset = 0.dp, overCover = true, modifier = Modifier.weight(1f)) {
+        QueueList(onMore = actions.onQueueItemMore, bottomInset = 0.dp, overCover = true, reordering = reordering, modifier = Modifier.weight(1f)) {
             NowPlayingSongHeader(state, actions)
         }
         Spacer(Modifier.height(8.dp))
