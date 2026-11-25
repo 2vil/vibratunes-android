@@ -1403,16 +1403,7 @@ class YouTube {
         playlistId: String?,
         preferredAudioLanguage: String?,
     ): Triple<String?, PlayerResponse, MediaType> {
-        val cpn =
-            (1..16)
-                .map {
-                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"[
-                        Random.nextInt(
-                            0,
-                            64,
-                        ),
-                    ]
-                }.joinToString("")
+        val cpn = newCpn()
 
         // A refusal says something about the track; silence says something about the network, and
         // only silence is worth retrying.
@@ -1652,17 +1643,45 @@ class YouTube {
 
     /**
      * Register a play in watch history: one GET of `videostatsPlaybackUrl`, as desktop's
-     * register_playback does. The watchtime and atr pings SimpMusic sent after it, one every 20 s
-     * for the whole track, kept the radio awake and are gone (issue #7).
+     * register_playback does. With [params] it is a watch-time report on `videostatsWatchtimeUrl`
+     * instead (desktop #764), sent on a pause and when the play ends; SimpMusic's every 20 s kept
+     * the radio awake (issue #7).
      */
     suspend fun initPlayback(
         playbackUrl: String,
         cpn: String,
         playlistId: String?,
+        params: Map<String, String>? = null,
     ): Result<Int> =
         runCatching {
-            ytMusic.initPlayback(playbackUrl, cpn, null, playlistId).status.value
+            val custom = params?.let { it + ("cver" to STREAM_WEB_REMIX.clientVersion) }
+            ytMusic.initPlayback(playbackUrl, cpn, custom, playlistId).status.value
         }
+
+    /**
+     * A fresh tracking block, with its cpn, for a play whose own an earlier play already used: a
+     * Repeat One loop, a replay off the cache or a download (desktop #764). music.youtube.com
+     * fetches one for every loop, so each play gets its own `ei`/`plid`. One WEB_REMIX `/player`,
+     * nothing resolved.
+     */
+    suspend fun playbackTracking(videoId: String): Result<Pair<String, PlayerResponse.PlaybackTracking?>> =
+        runCatching {
+            val cpn = newCpn()
+            val response =
+                ytMusic
+                    .player(
+                        STREAM_WEB_REMIX,
+                        videoId,
+                        null,
+                        cpn,
+                        signatureTimestamp = ytMusic.cipher.playerInfo()?.signatureTimestamp ?: approximateSignatureTimestamp(),
+                        poToken = ytMusic.webPoTokens(videoId)?.session,
+                    ).body<PlayerResponse>()
+                    .withFexpTracking()
+            cpn to response.playbackTracking
+        }
+
+    private fun newCpn() = (1..16).map { "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"[Random.nextInt(0, 64)] }.joinToString("")
 
     suspend fun nextYouTubePlaylists(continuation: String): Result<Pair<List<MusicTwoRowItemRenderer>, String?>> =
         runCatching {

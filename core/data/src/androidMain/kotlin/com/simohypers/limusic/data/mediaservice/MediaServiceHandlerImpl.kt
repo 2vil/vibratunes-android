@@ -3,10 +3,13 @@ package com.simohypers.limusic.data.mediaservice
 import com.simohypers.limusic.domain.mediaservice.queue.twinPositionMs
 import com.simohypers.limusic.domain.mediaservice.queue.switchVersion
 import com.simohypers.limusic.domain.mediaservice.queue.learnTwin
+import com.simohypers.limusic.domain.mediaservice.WatchTime
+import kotlin.math.roundToInt
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.ActivityManager.RunningAppProcessInfo
 import android.content.Context
+import android.os.SystemClock
 import android.content.Intent
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.LoudnessEnhancer
@@ -261,6 +264,10 @@ internal class MediaServiceHandlerImpl(
 
     private var getFormatJob: Job? = null
 
+    /** The play being heard, for its watch time. */
+    private var watch: WatchTime? = null
+    private var registerJob: Job? = null
+
     private var progressJob: Job? = null
 
     private var bufferedJob: Job? = null
@@ -438,19 +445,6 @@ internal class MediaServiceHandlerImpl(
                         updateNotification()
                     }
                 }
-            val playbackJob =
-                launch {
-                    format.collectLatest { formatTemp ->
-                        if (dataStoreManager.sendBackToGoogle.first() == TRUE) {
-                            if (formatTemp != null) {
-                                println("format in viewModel: $formatTemp")
-                                Logger.d(TAG, "Collect format ${formatTemp.videoId}")
-                                Logger.d(TAG, "Format expire at ${formatTemp.expiredTime}")
-                                initPlayback(formatTemp.playbackTrackingVideostatsPlaybackUrl, formatTemp.cpn)
-                            }
-                        }
-                    }
-                }
             val playbackSpeedPitchJob =
                 launch {
                     combine(dataStoreManager.playbackSpeed, dataStoreManager.pitch) { speed, pitch ->
@@ -480,7 +474,6 @@ internal class MediaServiceHandlerImpl(
                     dataStoreManager.getString(DISCORD_CONFIG_KEY).collect { discord.setConfig(DiscordConfig.parse(it)) }
                 }
             controlStateJob.join()
-            playbackJob.join()
             playbackSpeedPitchJob.join()
             discordJob.join()
             discordConfigJob.join()
@@ -494,6 +487,7 @@ internal class MediaServiceHandlerImpl(
             } else {
                 mediaItem.mediaId
             }
+        newPlay(videoId)
         val track =
             queueData.value.data.listTracks
                 .find { it.videoId == videoId }
@@ -647,15 +641,36 @@ internal class MediaServiceHandlerImpl(
             }
     }
 
-    private fun initPlayback(
-        playback: String?,
-        cpn: String?,
-    ) {
-        if (playback == null || cpn == null) return
-        coroutineScope.launch {
-            streamRepository.initPlayback(playback, cpn, queueData.value.data.playlistId).collect {
-                if (it == 204) Logger.d("Check initPlayback", "Success")
+    /**
+     * A fresh play of [videoId] starts (a new track, or Repeat One starting it over): the play before
+     * it closes its watch time, and this one registers in watch history with a tracking block of its
+     * own, so a replay never folds into the play before it (desktop #764).
+     */
+    private fun newPlay(videoId: String) {
+        val now = SystemClock.elapsedRealtime()
+        sendWatchTime(watch?.close(now))
+        val w = WatchTime(now)
+        watch = w
+        registerJob?.cancel()
+        registerJob =
+            coroutineScope.launch {
+                if (dataStoreManager.sendBackToGoogle.first() != TRUE) return@launch
+                // Played, not just loaded: a queue restored at launch waits for Play.
+                _controlState.first { it.isPlaying }
+                val ping = streamRepository.takePlaybackPing(videoId) ?: return@launch
+                val status = streamRepository.initPlayback(ping.url, ping.cpn, queueData.value.data.playlistId).first()
+                Logger.d(TAG, "watch-history ping for $videoId: $status")
+                // Still this play: the ping can take long enough for the next one to have started.
+                if (status in 200..299 && watch === w) ping.watchtimeUrl?.let { w.arm(it, ping.cpn) }
             }
+    }
+
+    private fun sendWatchTime(report: WatchTime.Report?) {
+        report ?: return
+        val params = report.params((player.volume * 100).roundToInt())
+        coroutineScope.launch {
+            val status = streamRepository.initPlayback(report.url, report.cpn, null, params).first()
+            Logger.d(TAG, "watch time reported ($status): ${report.stretches}, last=${report.last}")
         }
     }
 
@@ -736,6 +751,7 @@ internal class MediaServiceHandlerImpl(
                     val tickIntervalMs = lastTick.elapsedNow().inWholeMilliseconds
                     lastTick = TimeSource.Monotonic.markNow()
                     _simpleMediaState.value = SimpleMediaState.Progress(player.currentPosition)
+                    watch?.tick(player.currentPosition / 1000.0)
                     sinceLastPositionSaveMs += tickIntervalMs
                     if (sinceLastPositionSaveMs >= positionPersistIntervalMs) {
                         sinceLastPositionSaveMs = 0
@@ -1853,6 +1869,10 @@ internal class MediaServiceHandlerImpl(
             stopProgressUpdate()
             mayBeSaveRecentSong()
             mayBeSavePlaybackState()
+            // A pause or the queue's end, not a rebuffer: report what was heard.
+            if (!player.playWhenReady || player.playbackState == PlayerConstants.STATE_ENDED) {
+                sendWatchTime(watch?.pause(SystemClock.elapsedRealtime()))
+            }
         }
     }
 
@@ -1893,6 +1913,8 @@ internal class MediaServiceHandlerImpl(
             // Repeat-one replays the same mediaId without reloading now-playing data: tell Discord the
             // track started over, or its bar keeps the previous play's timeline.
             nowPlayingState.value.songEntity?.let { reportTrack(it, restart = true) }
+            // From the top it is a play of its own; a reload mid-track (a stream recovered) is not.
+            if (player.currentPosition < 1_000) newPlay(mediaItem.mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO))
         }
         // The player moved on by itself: a track ended, a crossfade, the notification's buttons.
         val index = player.currentMediaItemIndex

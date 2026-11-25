@@ -13,8 +13,6 @@ interface StreamRepository {
 
     suspend fun getFormatFlow(videoId: String): Flow<NewFormatEntity?>
 
-    suspend fun updateFormat(videoId: String)
-
     fun getStream(
         dataStoreManager: DataStoreManager,
         videoId: String,
@@ -23,12 +21,23 @@ interface StreamRepository {
         muxed: Boolean = false, // m3u8 or mp4 (both contain audio and video)
     ): Flow<String?>
 
-    /** The watch-history ping for a play; emits the HTTP status, 0 on failure. */
+    /**
+     * The watch-history ping for a play; emits the HTTP status, 0 on failure. With [params] it is
+     * a watch-time report to the play's watch-time URL ([com.simohypers.limusic.domain.mediaservice.WatchTime]).
+     */
     fun initPlayback(
         playback: String,
         cpn: String,
         playlistId: String?,
+        params: Map<String, String>? = null,
     ): Flow<Int>
+
+    /**
+     * The tracking block for a play of [videoId], used once (desktop #764): the stream's own, taken
+     * off its format row, else a fresh one when an earlier play spent it or it expired. Null when
+     * YouTube gave none.
+     */
+    suspend fun takePlaybackPing(videoId: String): PlaybackPing?
 
 
     fun getFullMetadata(videoId: String): Flow<Resource<Track>>
@@ -46,3 +55,9 @@ interface StreamRepository {
         streamUrl: String?,
     ): String?
 }
+/** Where a play registers in watch history ([url]) and reports its watch time, and its cpn. */
+data class PlaybackPing(
+    val url: String,
+    val watchtimeUrl: String?,
+    val cpn: String,
+)
