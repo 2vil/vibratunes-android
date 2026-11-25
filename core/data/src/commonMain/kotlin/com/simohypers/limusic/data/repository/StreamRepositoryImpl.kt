@@ -16,6 +16,7 @@ import com.simohypers.limusic.domain.extension.isBefore
 import com.simohypers.limusic.domain.extension.now
 import com.simohypers.limusic.domain.extension.plusSeconds
 import com.simohypers.limusic.domain.manager.DataStoreManager
+import com.simohypers.limusic.domain.repository.PlaybackPing
 import com.simohypers.limusic.domain.repository.StreamRepository
 import com.simohypers.limusic.domain.utils.Resource
 import com.simohypers.limusic.kotlinytmusicscraper.PlayerRefusedException
@@ -26,10 +27,12 @@ import com.simohypers.limusic.logger.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal class StreamRepositoryImpl(
     private val localDataSource: LocalDataSource,
@@ -48,45 +51,6 @@ internal class StreamRepositoryImpl(
         videoId: String,
         streamUrl: String?,
     ): String? = youTube.getExtractSource(videoId, streamUrl)
-
-    override suspend fun updateFormat(videoId: String) {
-        localDataSource.getNewFormat(videoId)?.let { oldFormat ->
-            Logger.d("Stream", "oldFormatExpired: ${oldFormat.expiredTime}")
-            Logger.d("Stream", "now: ${now()}")
-            Logger.d("Stream", "isExpired: ${oldFormat.expiredTime.isBefore(now())}")
-            if (oldFormat.expiredTime.isBefore(now())) {
-                youTube
-                    .player(videoId)
-                    .onSuccess { triple ->
-                        val response = triple.second
-                        localDataSource.updateNewFormat(
-                            oldFormat.copy(
-                                expiredTime = now().plusSeconds(response.streamingData?.expiresInSeconds?.toLong() ?: 0L),
-                                playbackTrackingVideostatsPlaybackUrl =
-                                    response.playbackTracking?.videostatsPlaybackUrl?.baseUrl?.replace(
-                                        "https://s.youtube.com",
-                                        "https://music.youtube.com",
-                                    ),
-                                playbackTrackingAtrUrl =
-                                    response.playbackTracking?.atrUrl?.baseUrl?.replace(
-                                        "https://s.youtube.com",
-                                        "https://music.youtube.com",
-                                    ),
-                                playbackTrackingVideostatsWatchtimeUrl =
-                                    response.playbackTracking?.videostatsWatchtimeUrl?.baseUrl?.replace(
-                                        "https://s.youtube.com",
-                                        "https://music.youtube.com",
-                                    ),
-                                cpn = triple.first,
-                            ),
-                        )
-                        Logger.d("UpdateFormat", "Updated format for $videoId")
-                    }.onFailure { throwable ->
-                        Logger.e("UpdateFormat", "Error: ${throwable.message}")
-                    }
-            }
-        }
-    }
 
     override fun getStream(
         dataStoreManager: DataStoreManager,
@@ -291,10 +255,11 @@ internal class StreamRepositoryImpl(
         playback: String,
         cpn: String,
         playlistId: String?,
+        params: Map<String, String>?,
     ): Flow<Int> =
         flow {
             youTube
-                .initPlayback(playback, cpn, playlistId)
+                .initPlayback(playback, cpn, playlistId, params)
                 .onSuccess { emit(it) }
                 .onFailure {
                     Logger.e("InitPlayback", "Error: ${it.message}")
@@ -302,6 +267,30 @@ internal class StreamRepositoryImpl(
                 }
         }.flowOn(Dispatchers.IO)
 
+
+    override suspend fun takePlaybackPing(videoId: String): PlaybackPing? =
+        withContext(Dispatchers.IO) {
+            // A stream being resolved writes its block in a moment; audio from the cache or a
+            // download writes none, and a row an earlier play spent stays spent.
+            val row =
+                withTimeoutOrNull(PING_ROW_WAIT_MS) {
+                    localDataSource.getNewFormatAsFlow(videoId).filterNotNull().first {
+                        it.playbackTrackingVideostatsPlaybackUrl != null && it.cpn != null && !it.expiredTime.isBefore(now())
+                    }
+                }
+            if (row != null) {
+                localDataSource.updateNewFormat(row.copy(playbackTrackingVideostatsPlaybackUrl = null, playbackTrackingVideostatsWatchtimeUrl = null))
+                return@withContext PlaybackPing(row.playbackTrackingVideostatsPlaybackUrl!!, row.playbackTrackingVideostatsWatchtimeUrl, row.cpn!!)
+            }
+            if (PlaybackRefusals.blocked.value != null) return@withContext null
+            val (cpn, tracking) =
+                youTube.playbackTracking(videoId).getOrElse {
+                    Logger.e("InitPlayback", "Fresh tracking failed: ${it.message}")
+                    return@withContext null
+                }
+            val url = tracking?.videostatsPlaybackUrl?.baseUrl?.onMusicHost() ?: return@withContext null
+            PlaybackPing(url, tracking.videostatsWatchtimeUrl?.baseUrl?.onMusicHost(), cpn)
+        }
 
     override fun getFullMetadata(videoId: String): Flow<Resource<Track>> =
         flow {
@@ -331,3 +320,8 @@ internal class StreamRepositoryImpl(
         }
     }
 }
+
+private fun String.onMusicHost() = replace("https://s.youtube.com", "https://music.youtube.com")
+
+/** How long a play waits for its stream's resolve to write a tracking block before fetching one. */
+private const val PING_ROW_WAIT_MS = 10_000L

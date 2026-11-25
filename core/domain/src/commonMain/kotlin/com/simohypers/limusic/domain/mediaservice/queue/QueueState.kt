@@ -4,6 +4,7 @@ import com.simohypers.limusic.common.LOCAL_PLAYLIST_ID
 import com.simohypers.limusic.domain.data.model.browse.album.Track
 import com.simohypers.limusic.domain.data.model.browse.album.TwinSegment
 import com.simohypers.limusic.domain.mediaservice.handler.RepeatState
+import com.simohypers.limusic.domain.utils.MusicVideoType
 
 /**
  * The play queue, ported from Limusic desktop (`QueueState` and its helpers in
@@ -201,6 +202,13 @@ fun Track.swappedVersion(): Track? {
         twinSegments = twinSegments.map { TwinSegment(it.twinStartMs, it.startMs, it.durationMs) }.sortedBy { it.startMs },
     )
 }
+
+/**
+ * The song this music video row is the other version of, as the row would be on it: the song's id
+ * and length, and [Track.twinSegments] taking the song's moments to the video's. Null for anything
+ * but a video YouTube paired with a song.
+ */
+fun Track.songOfVideo(): Track? = takeIf { MusicVideoType.isVideoSong(videoType) }?.swappedVersion()
 
 /**
  * Where [ms] into one version falls in the other, through the stretch playing. A video's intro or
