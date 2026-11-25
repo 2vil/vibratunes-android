@@ -18,6 +18,8 @@ import com.simohypers.limusic.domain.data.model.searchResult.playlists.Playlists
 import com.simohypers.limusic.domain.data.type.PlaylistType as LibraryPlaylist
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicRating
 import com.simohypers.limusic.domain.data.model.lyrics.LyricsSource
+import com.simohypers.limusic.domain.data.model.lyrics.keptOnVideo
+import com.simohypers.limusic.domain.mediaservice.queue.songOfVideo
 import com.simohypers.limusic.domain.data.entities.NewFormatEntity
 import com.simohypers.limusic.domain.data.entities.SongEntity
 import com.simohypers.limusic.domain.data.entities.SongInfoEntity
@@ -697,12 +699,13 @@ class SharedViewModel(
         viewModelScope.launch {
             val order = LyricsSource.order(dataStoreManager.lyricsProviders.first())
             val artist = lyricsArtist(song)
-            suspend fun fetch() = lyricsCanvasRepository.getLyrics(song.videoId, song.title, artist, song.albumName, durationSeconds, order)
+            val twin = songOfVideo(song.videoId)
+            suspend fun fetch() = lyricsCanvasRepository.getLyrics(song.videoId, song.title, artist, song.albumName, durationSeconds, order, twin)
             val entity = fetch()
             if (_nowPlayingState.value?.songEntity?.videoId != song.videoId) return@launch
             showLyrics(song.videoId, entity)
             // A cached lyric is shown at once and brought up to date behind it (Limusic Lyrics).
-            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, song.title, artist, durationSeconds, order)) {
+            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, song.title, artist, durationSeconds, order, twin)) {
                 val fresh = fetch()
                 if (_nowPlayingState.value?.songEntity?.videoId == song.videoId) showLyrics(song.videoId, fresh)
             }
@@ -755,8 +758,15 @@ class SharedViewModel(
             album = if (title == null) song.albumName else null,
             durationSeconds = ((timeline.value.total + 500) / 1000).toInt(),
             searched = title != null,
+            song = songOfVideo(song.videoId),
         )
     }
+
+    /** The song [videoId] is the music video of, when it is a queued video YouTube paired with one. */
+    private fun songOfVideo(videoId: String): Track? =
+        mediaPlayerHandler.queueData.value?.data?.listTracks?.firstNotNullOfOrNull { row ->
+            row.takeIf { it.videoId == videoId }?.songOfVideo()
+        }
 
     /** The votes on the song's live Limusic lyric, or null when it has none. Throws LimusicException. */
     suspend fun limusicRating(videoId: String): LimusicRating? = lyricsCanvasRepository.limusicRating(videoId)
@@ -774,8 +784,12 @@ class SharedViewModel(
         note: String?,
     ) = lyricsCanvasRepository.limusicReport(videoId, reason, note)
 
-    /** What the cache holds for [videoId]: the lyrics on screen, for the picker to keep as they are. */
-    suspend fun savedLyrics(videoId: String): LyricsEntity? = lyricsCanvasRepository.getSavedLyrics(videoId).first()
+    /**
+     * What the cache holds for [videoId]: the lyrics on screen, for the picker to keep as they are.
+     * Null for a music video showing its song's, which the picker asks for again.
+     */
+    suspend fun savedLyrics(videoId: String): LyricsEntity? =
+        lyricsCanvasRepository.getSavedLyrics(videoId).first()?.takeIf { songOfVideo(videoId) == null || it.keptOnVideo }
 
     /** Keep [entity] for its song whatever the order says, or with null go back to Automatic. */
     fun chooseLyrics(entity: LyricsEntity?) {
@@ -801,7 +815,12 @@ class SharedViewModel(
             data.copy(lyricsData = data.lyricsData?.copy(offsetMs = offsetMs, pinned = true))
         }
         viewModelScope.launch {
-            val saved = lyricsCanvasRepository.getSavedLyrics(videoId).first() ?: return@launch
+            var saved = lyricsCanvasRepository.getSavedLyrics(videoId).first()
+            // A music video showing its song's lyrics nudges them where they are cached, the song's
+            // row. Without a segment map the video is on its own timing, and so is its nudge.
+            val song = songOfVideo(videoId)?.takeIf { it.twinSegments.isNotEmpty() }
+            if (song != null && saved?.keptOnVideo != true) saved = lyricsCanvasRepository.getSavedLyrics(song.videoId).first()
+            saved ?: return@launch
             lyricsCanvasRepository.insertLyrics(saved.copy(offsetMs = offsetMs, pinned = true))
         }
     }

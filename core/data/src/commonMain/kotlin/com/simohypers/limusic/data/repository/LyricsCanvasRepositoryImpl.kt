@@ -6,6 +6,9 @@ import com.simohypers.limusic.domain.data.model.browse.artist.sameArtistName
 import com.simohypers.limusic.data.db.datasource.LocalDataSource
 import com.simohypers.limusic.data.mapping.toLyrics
 import com.simohypers.limusic.domain.data.entities.LyricsEntity
+import com.simohypers.limusic.domain.data.model.browse.album.Track
+import com.simohypers.limusic.domain.data.model.lyrics.keptOnVideo
+import com.simohypers.limusic.domain.data.model.lyrics.ontoVideo
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicException
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicRating
 import com.simohypers.limusic.domain.data.model.lyrics.LyricsRecheck
@@ -92,13 +95,18 @@ internal class LyricsCanvasRepositoryImpl(
         album: String?,
         durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track?,
     ): LyricsEntity? =
         withContext(Dispatchers.IO) {
             val now = Clock.System.now().epochSeconds
             val cached = localDataSource.getSavedLyrics(videoId)
-            if (cached != null && cached.fetchedAt > 0 && (!cached.error || now - cached.fetchedAt < LYRICS_MISS_TTL_SECS)) {
+            // A music video's row counts only when it is its own; one cached before its song was
+            // known is passed over.
+            val kept = song == null || cached?.keptOnVideo == true
+            if (kept && cached != null && cached.fetchedAt > 0 && (!cached.error || now - cached.fetchedAt < LYRICS_MISS_TTL_SECS)) {
                 return@withContext cached.takeUnless { it.error }
             }
+            if (song != null) return@withContext onVideo(videoId, song, title, artist, album, order, now)
             val query = LyricsQuery(videoId, title, artist, album, durationSeconds.takeIf { it > 0 })
             val sources = order.filter { it.second }.map { it.first }
             // Synced beats plain: the first synced answer down the list wins, and only when none is
@@ -164,9 +172,18 @@ internal class LyricsCanvasRepositoryImpl(
         album: String?,
         durationSeconds: Int,
         searched: Boolean,
+        song: Track?,
     ): LyricsEntity? =
         withContext(Dispatchers.IO) {
-            askLyricsSource(source, LyricsQuery(videoId, title, artist, album, durationSeconds.takeIf { it > 0 }, searched), Clock.System.now().epochSeconds)
+            val now = Clock.System.now().epochSeconds
+            suspend fun ask(
+                id: String,
+                seconds: Int?,
+            ) = askLyricsSource(source, LyricsQuery(id, title, artist, album, seconds?.takeIf { it > 0 }, searched), now)
+            if (song == null || searched) return@withContext ask(videoId, durationSeconds)
+            // What getLyrics shows from this source, or the video's own when the song has none.
+            if (source == LyricsSource.LIMUSIC) videoOwn(videoId, now)?.let { return@withContext it }
+            ask(song.videoId, song.durationSeconds)?.ontoVideo(videoId, song.twinSegments) ?: ask(videoId, durationSeconds)
         }
 
     override suspend fun recheckLyrics(
@@ -175,8 +192,13 @@ internal class LyricsCanvasRepositoryImpl(
         artist: String,
         durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track?,
     ): Boolean =
         withContext(Dispatchers.IO) {
+            // A music video shows its song's row unless it keeps one of its own.
+            if (song != null && localDataSource.getSavedLyrics(videoId)?.keptOnVideo != true) {
+                return@withContext recheckLyrics(song.videoId, title, artist, song.durationSeconds ?: 0, order, null)
+            }
             val now = Clock.System.now().epochSeconds
             val cached = localDataSource.getSavedLyrics(videoId) ?: return@withContext false
             val kind = LyricsRecheck.due(cached, now - cached.fetchedAt, order) ?: return@withContext false
@@ -221,6 +243,54 @@ internal class LyricsCanvasRepositoryImpl(
                     new.lines != row.lines || new.origin != row.origin || new.authors != row.authors
                 }
             }
+        }
+
+    /**
+     * A music video paired with [song]: a Limusic lyric synced on the video itself, else the song's
+     * lyrics moved onto the video's timing. Limusic can't match the two by name (their lengths
+     * differ), and any other source's lines are the song's, early by the video's intro. Only the
+     * video's own lyric is kept under it: the song's is moved again every time, so it follows the
+     * song's cache, its daily check, picks and nudges.
+     */
+    private suspend fun onVideo(
+        videoId: String,
+        song: Track,
+        title: String,
+        artist: String,
+        album: String?,
+        order: List<Pair<LyricsSource, Boolean>>,
+        now: Long,
+    ): LyricsEntity? {
+        if (order.any { it.first == LyricsSource.LIMUSIC && it.second }) {
+            videoOwn(videoId, now)?.let {
+                localDataSource.insertLyrics(it)
+                return it
+            }
+        }
+        val moved =
+            getLyrics(song.videoId, title, artist, album, song.durationSeconds ?: 0, order, null)
+                ?.ontoVideo(videoId, song.twinSegments) ?: return null
+        // Without a segment map (YouTube pairs some only on the album page) the copy keeps the
+        // song's timing. It is cached under the video so a nudge there has a row of its own.
+        if (song.twinSegments.isEmpty()) localDataSource.insertLyrics(moved)
+        return moved
+    }
+
+    /**
+     * A Limusic lyric synced on this video itself, asked for by id alone: by name the service could
+     * answer with the song, which is timed to the song.
+     */
+    private suspend fun videoOwn(
+        videoId: String,
+        now: Long,
+    ): LyricsEntity? =
+        try {
+            (limusic.get(videoId) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(videoId, now)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.d(LYRICS_TAG, "limusic (video's own) failed: ${e.message}")
+            null
         }
 
     override suspend fun limusicRating(videoId: String): LimusicRating? =
