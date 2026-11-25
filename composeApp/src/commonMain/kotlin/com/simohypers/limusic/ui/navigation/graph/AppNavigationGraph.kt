@@ -1,7 +1,5 @@
 package com.simohypers.limusic.ui.navigation.graph
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -10,7 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -41,108 +39,39 @@ import com.simohypers.limusic.ui.screen.player.FullscreenPlayer
 fun AppNavigationGraph(
     innerPadding: PaddingValues,
     navController: NavHostController,
-    tabs: List<BottomNavScreen> = BottomNavScreen.allTabs,
-    currentLibraryChip: LibraryChipType = LibraryChipType.YOUR_LIBRARY,
+    tabs: List<BottomNavScreen>,
     startDestination: Any = HomeDestination,
     hideNavBar: () -> Unit = { },
     showNavBar: (shouldShowNowPlayingSheet: Boolean) -> Unit = { },
     showNowPlayingSheet: () -> Unit = {},
     onScrolling: (onTop: Boolean) -> Unit = {},
 ) {
+    val lockedLibrary: @Composable (LibraryChipType) -> Unit = { chip ->
+        LibraryScreen(innerPadding = innerPadding, navController = navController, onScrolling = onScrolling, lockedChip = chip)
+    }
     NavHost(
         navController,
         startDestination = startDestination,
+        // Opening a page slides it in from the right and back slides it out the same way. Switching
+        // tabs slides the way the tab bar reads; leaving a page for another tab only fades, since the
+        // page has no place in the bar.
         enterTransition = {
-            val fromIndex = getBottomTabIndex(initialState, tabs)
-            val toIndex = getBottomTabIndex(targetState, tabs)
-            when {
-                fromIndex != null && toIndex != null -> {
-                    when {
-                        toIndex > fromIndex -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            initialOffsetX = { it },
-                        )
-                        toIndex < fromIndex -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            initialOffsetX = { -it },
-                        )
-                        else -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
-                    }
-                }
-                else -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                    animationSpec = tween(350, easing = FastOutSlowInEasing),
-                    initialOffsetX = { it },
-                )
+            when (val dir = tabDirection(initialState.destination, targetState.destination, tabs)) {
+                0 -> fadeIn()
+                else -> fadeIn() + slideInHorizontally { it * dir }
             }
         },
         exitTransition = {
-            val fromIndex = getBottomTabIndex(initialState, tabs)
-            val toIndex = getBottomTabIndex(targetState, tabs)
-            when {
-                fromIndex != null && toIndex != null -> {
-                    when {
-                        toIndex > fromIndex -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            targetOffsetX = { -it },
-                        )
-                        toIndex < fromIndex -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            targetOffsetX = { it },
-                        )
-                        else -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
-                    }
-                }
-                else -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                    animationSpec = tween(350, easing = FastOutSlowInEasing),
-                    targetOffsetX = { -it },
-                )
+            when (val dir = tabDirection(initialState.destination, targetState.destination, tabs)) {
+                0 -> fadeOut()
+                else -> fadeOut() + slideOutHorizontally { -it * dir }
             }
         },
         popEnterTransition = {
-            val fromIndex = getBottomTabIndex(initialState, tabs)
-            val toIndex = getBottomTabIndex(targetState, tabs)
-            when {
-                fromIndex != null && toIndex != null -> {
-                    when {
-                        toIndex > fromIndex -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            initialOffsetX = { it },
-                        )
-                        toIndex < fromIndex -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            initialOffsetX = { -it },
-                        )
-                        else -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing))
-                    }
-                }
-                else -> fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideInHorizontally(
-                    animationSpec = tween(350, easing = FastOutSlowInEasing),
-                    initialOffsetX = { -it },
-                )
-            }
+            fadeIn() + slideInHorizontally { -it }
         },
         popExitTransition = {
-            val fromIndex = getBottomTabIndex(initialState, tabs)
-            val toIndex = getBottomTabIndex(targetState, tabs)
-            when {
-                fromIndex != null && toIndex != null -> {
-                    when {
-                        toIndex > fromIndex -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            targetOffsetX = { -it },
-                        )
-                        toIndex < fromIndex -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                            animationSpec = tween(350, easing = FastOutSlowInEasing),
-                            targetOffsetX = { it },
-                        )
-                        else -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing))
-                    }
-                }
-                else -> fadeOut(animationSpec = tween(300, easing = FastOutSlowInEasing)) + slideOutHorizontally(
-                    animationSpec = tween(350, easing = FastOutSlowInEasing),
-                    targetOffsetX = { it },
-                )
-            }
+            fadeOut() + slideOutHorizontally { it }
         },
     ) {
         // Bottom bar destinations
@@ -163,57 +92,15 @@ fun AppNavigationGraph(
                 innerPadding = innerPadding,
                 navController = navController,
                 onScrolling = onScrolling,
-                initialChip = LibraryChipType.YOUR_LIBRARY,
             )
         }
-        composable<PlaylistsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.LOCAL_PLAYLIST,
-            )
-        }
-        composable<AlbumsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.ALBUMS,
-            )
-        }
-        composable<ArtistsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.ARTISTS,
-            )
-        }
-        composable<SongsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.SONGS,
-            )
-        }
-        composable<DownloadsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.DOWNLOADED_PLAYLIST,
-            )
-        }
-        composable<PodcastsDestination> {
-            LibraryScreen(
-                innerPadding = innerPadding,
-                navController = navController,
-                onScrolling = onScrolling,
-                initialChip = LibraryChipType.FAVORITE_PODCAST,
-            )
-        }
+        // The tabs that are Library on one chip, without the chip row.
+        composable<PlaylistsDestination> { lockedLibrary(LibraryChipType.LOCAL_PLAYLIST) }
+        composable<AlbumsDestination> { lockedLibrary(LibraryChipType.ALBUMS) }
+        composable<ArtistsDestination> { lockedLibrary(LibraryChipType.ARTISTS) }
+        composable<SongsDestination> { lockedLibrary(LibraryChipType.SONGS) }
+        composable<DownloadsDestination> { lockedLibrary(LibraryChipType.DOWNLOADED_PLAYLIST) }
+        composable<PodcastsDestination> { lockedLibrary(LibraryChipType.FAVORITE_PODCAST) }
         // Only reachable as a tab while signed in to YouTube
         composable<MixForYouDestination> {
             MixForYouScreen(
@@ -261,13 +148,18 @@ fun AppNavigationGraph(
     }
 }
 
-/**
- * Returns a tab's visual index within [tabs], or null if [entry] is not one of the active bottom-bar tabs.
- */
-private fun getBottomTabIndex(
-    entry: NavBackStackEntry,
+/** 1 slides forward (from the right), -1 backward, 0 fades: a tab switch that starts on a page. */
+private fun tabDirection(
+    from: NavDestination,
+    to: NavDestination,
     tabs: List<BottomNavScreen>,
-): Int? {
-    val idx = limusicTabIndex(entry, tabs)
-    return if (idx >= 0) idx else null
+): Int {
+    val fromTab = limusicTabIndex(from, tabs)
+    val toTab = limusicTabIndex(to, tabs)
+    return when {
+        toTab < 0 -> 1
+        fromTab < 0 -> 0
+        toTab < fromTab -> -1
+        else -> 1
+    }
 }

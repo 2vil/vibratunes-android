@@ -51,8 +51,6 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.toRoute
 import com.simohypers.limusic.common.LibraryChipType
 import com.simohypers.limusic.domain.data.entities.LocalPlaylistEntity
 import com.simohypers.limusic.domain.data.entities.SongEntity
@@ -66,7 +64,6 @@ import com.simohypers.limusic.extension.copy
 import com.simohypers.limusic.extension.isScrollingUp
 import com.simohypers.limusic.extension.ultraThinBarStyle
 import com.simohypers.limusic.getPlatform
-import com.simohypers.limusic.ui.navigation.destination.library.LibraryDestination
 import com.simohypers.limusic.ui.navigation.destination.library.LibraryDynamicPlaylistDestination
 import com.simohypers.limusic.viewModel.trackIds
 import limusic.composeapp.generated.resources.download_progress_short
@@ -127,7 +124,8 @@ import limusic.composeapp.generated.resources.podcasts
 @Composable
 fun LibraryScreen(
     innerPadding: PaddingValues,
-    initialChip: LibraryChipType = LibraryChipType.YOUR_LIBRARY,
+    // Set for the tabs that are one chip of Library (Albums, Songs...): that chip, no chip row.
+    lockedChip: LibraryChipType? = null,
     viewModel: LibraryViewModel = koinViewModel(),
     sharedViewModel: SharedViewModel = koinInject(),
     navController: NavController,
@@ -168,17 +166,13 @@ fun LibraryScreen(
         viewModel.getRecentlyAdded()
     }
 
-    LaunchedEffect(initialChip) {
-        viewModel.setCurrentScreen(initialChip)
-    }
-
     val chipRowState = rememberScrollState()
-    val currentFilter by viewModel.currentScreen.collectAsStateWithLifecycle()
-    val lockedChip by sharedViewModel.lockedLibraryChip.collectAsStateWithLifecycle()
+    val chosenChip by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val currentFilter = lockedChip ?: chosenChip
     // A chip asked for by a deep link (limusic://library?tab=…), applied once and cleared.
     val libraryTabRequest by sharedViewModel.libraryTabRequest.collectAsStateWithLifecycle()
     LaunchedEffect(libraryTabRequest) {
-        libraryTabRequest?.let {
+        libraryTabRequest?.takeIf { lockedChip == null }?.let {
             viewModel.setCurrentScreen(it)
             sharedViewModel.requestLibraryTab(null)
         }
@@ -460,7 +454,7 @@ fun LibraryScreen(
             // Blocks taps on the bar's empty parts from reaching the list beneath, as on Home.
             .pointerInput(Unit) {},
     ) {
-        LimusicTabTopBar(title = stringResource(Res.string.library)) {
+        LimusicTabTopBar(title = stringResource(LibraryChips.find { it.first == lockedChip }?.third ?: Res.string.library)) {
             // Only with something to push: what was liked, followed or saved while signed out
             // (or before likes went to YouTube) lives on the phone until this puts it on the account.
             if (unsyncedCount > 0) {
@@ -506,7 +500,7 @@ fun LibraryScreen(
             }
             ListenTogetherIconButton { navController.navigate(ListenTogetherDestination) }
         }
-        if (lockedChip == null || lockedChip == LibraryChipType.YOUR_LIBRARY) {
+        if (lockedChip == null) {
             Row(
                 modifier =
                     Modifier

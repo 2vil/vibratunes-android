@@ -28,14 +28,11 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -251,19 +248,13 @@ internal fun FlatTabBar(
                             verticalArrangement = Arrangement.Center,
                         ) {
                             CompositionLocalProvider(LocalContentColor provides contentColor) {
-                                screen.icon()
+                                Icon(screen.icon, contentDescription = null)
                             }
                             Text(
-                                text = stringResource(screen.title),
-                                style = typo().labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    textAlign = TextAlign.Center,
-                                    letterSpacing = (-0.2).sp,
-                                ),
+                                stringResource(screen.title),
+                                style = typo().bodySmall,
                                 color = contentColor,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                softWrap = false,
                             )
                         }
                     }
@@ -307,7 +298,7 @@ internal fun FlatSearchButton(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
         ) {
-            BottomNavScreen.Search.icon()
+            Icon(BottomNavScreen.Search.icon, contentDescription = null)
         }
     }
 }
@@ -446,7 +437,7 @@ fun AppNavigationRail(
         Spacer(Modifier.weight(1f))
         bottomNavScreens.forEach { screen ->
             NavigationRailItem(
-                icon = screen.icon,
+                icon = { Icon(screen.icon, contentDescription = null) },
                 label = {
                     Text(
                         stringResource(screen.title),

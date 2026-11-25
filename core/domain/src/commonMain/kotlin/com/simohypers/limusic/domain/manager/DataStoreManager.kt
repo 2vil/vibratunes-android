@@ -411,10 +411,6 @@ interface DataStoreManager {
 
     suspend fun setExplicitContentEnabled(enabled: Boolean)
 
-    val bottomBarTabs: Flow<String>
-
-    suspend fun setBottomBarTabs(tabs: String)
-
     /** Discord OAuth access token; empty when signed out. */
     val discordToken: Flow<String>
 
@@ -509,7 +505,5 @@ interface DataStoreManager {
         const val AUTO_BACKUP_FREQUENCY_DAILY = "daily"
         const val AUTO_BACKUP_FREQUENCY_WEEKLY = "weekly"
         const val AUTO_BACKUP_FREQUENCY_MONTHLY = "monthly"
-
-        const val DEFAULT_BOTTOM_BAR_TABS = "home,search,library"
     }
 }

@@ -352,6 +352,9 @@
     <string name="flat_progress_bar_info">A plain line instead of the wave, in the player and around the mini player's cover.</string>
     <string name="compact_nav_bar">Compact navigation bar</string>
     <string name="compact_nav_bar_info">A slimmer tab bar at the bottom, icons only.</string>
+    <string name="nav_bar_tabs">Navigation bar tabs</string>
+    <string name="nav_bar_tabs_info">Which tabs the bar shows, and in what order.</string>
+    <string name="nav_bar_tabs_hint">Drag a tab to move it. The bar holds up to %1$d, and Home always stays.</string>
     <string name="cover_lyric_romanized">Romanized lyric line</string>
     <string name="cover_lyric_romanized_info">The lyric line under the artwork shows the romanization instead of the original script, for songs in the languages picked under Lyrics romanization. The lyrics page keeps its own Romanized switch.</string>
     <string name="open_player_on_play_info">On, playing a song, album or playlist brings up the full player. Off, it starts playing and leaves you on the page you were browsing.</string>

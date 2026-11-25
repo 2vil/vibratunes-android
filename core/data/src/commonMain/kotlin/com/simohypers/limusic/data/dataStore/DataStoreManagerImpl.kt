@@ -1128,19 +1128,6 @@ internal class DataStoreManagerImpl(
         }
     }
 
-    override val bottomBarTabs: Flow<String> =
-        settingsDataStore.data.map { preferences ->
-            preferences[BOTTOM_BAR_TABS] ?: DataStoreManager.DEFAULT_BOTTOM_BAR_TABS
-        }
-
-    override suspend fun setBottomBarTabs(tabs: String) {
-        withContext(Dispatchers.IO) {
-            settingsDataStore.edit { settings ->
-                settings[BOTTOM_BAR_TABS] = tabs
-            }
-        }
-    }
-
     override val discordToken: Flow<String> =
         settingsDataStore.data.map { preferences ->
             preferences[DISCORD_TOKEN] ?: ""
@@ -1379,7 +1366,6 @@ internal class DataStoreManagerImpl(
         val AUTO_BACKUP_FREQUENCY = stringPreferencesKey("auto_backup_frequency")
         val AUTO_BACKUP_MAX_FILES = intPreferencesKey("auto_backup_max_files")
         val AUTO_BACKUP_LAST_TIME = longPreferencesKey("auto_backup_last_time")
-        val BOTTOM_BAR_TABS = stringPreferencesKey("bottom_bar_tabs")
     }
 }
 

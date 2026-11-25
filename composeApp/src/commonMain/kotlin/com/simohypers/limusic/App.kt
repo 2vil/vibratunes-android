@@ -114,13 +114,11 @@ fun App(
     val isYouTubeLoggedIn by viewModel.getYouTubeLoggedIn().collectAsStateWithLifecycle(DataStoreManager.FALSE)
     val showMixForYouTab = isYouTubeLoggedIn == TRUE
 
-    val bottomBarTabsString by viewModel.bottomBarTabs.collectAsStateWithLifecycle(initialValue = DataStoreManager.DEFAULT_BOTTOM_BAR_TABS)
-    val lockedLibraryChip by viewModel.lockedLibraryChip.collectAsStateWithLifecycle()
-    val activeBottomTabs = remember(bottomBarTabsString, showMixForYouTab) {
-        BottomNavScreen.parseTabs(bottomBarTabsString).filter { tab ->
-            if (tab == BottomNavScreen.MixForYou) showMixForYouTab else true
-        }.ifEmpty { listOf(BottomNavScreen.Home, BottomNavScreen.Search, BottomNavScreen.Library) }
-    }
+    val savedTabs by viewModel.bottomBarTabs.collectAsStateWithLifecycle()
+    val activeBottomTabs =
+        remember(savedTabs, showMixForYouTab) {
+            BottomNavScreen.parseTabs(savedTabs).filter { it != BottomNavScreen.MixForYou || showMixForYouTab }
+        }
 
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val appearance by viewModel.appearance.collectAsStateWithLifecycle()
@@ -399,18 +397,9 @@ fun App(
                                     modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 6.dp),
                                 )
                             }
-                            LimusicNavigationBar(
-                                navController = navController,
-                                tabs = activeBottomTabs,
-                                compact = compactNavBar,
-                                onLibraryTabRequest = { chip, locked ->
-                                    viewModel.requestLibraryTab(chip)
-                                    viewModel.setLockedLibraryChip(if (locked) chip else null)
-                                },
-                                onReselect = { klass ->
-                                    viewModel.reloadDestination(klass)
-                                },
-                            )
+                            LimusicNavigationBar(navController = navController, tabs = activeBottomTabs, compact = compactNavBar) { klass ->
+                                viewModel.reloadDestination(klass)
+                            }
                         }
                     }
                 }
@@ -456,7 +445,6 @@ fun App(
                                     innerPadding = innerPadding,
                                     navController = navController,
                                     tabs = activeBottomTabs,
-                                    currentLibraryChip = lockedLibraryChip ?: LibraryChipType.YOUR_LIBRARY,
                                     hideNavBar = {
                                         isNavBarVisible = false
                                     },

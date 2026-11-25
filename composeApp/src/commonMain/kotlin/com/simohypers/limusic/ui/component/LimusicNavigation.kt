@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
@@ -20,94 +21,55 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
-import com.simohypers.limusic.common.LibraryChipType
 import com.simohypers.limusic.ui.navigation.destination.home.SettingsDestination
-import com.simohypers.limusic.ui.navigation.destination.library.LibraryDynamicPlaylistDestination
 import com.simohypers.limusic.ui.theme.typo
 import org.jetbrains.compose.resources.stringResource
 import kotlin.reflect.KClass
 
-fun NavBackStackEntry.matchesTab(
-    tab: BottomNavScreen,
-): Boolean {
-    val dest = destination
-    return when {
-        dest.hasRoute(LibraryDynamicPlaylistDestination::class) ->
-            tab.destination is LibraryDynamicPlaylistDestination
-        else ->
-            dest.hasRoute(tab.destination::class)
-    }
-}
-
-/** Position of [entry]'s tab in [tabs], or -1 when it is not a tab. */
+/** Position of [destination] in [tabs], or -1 when it is not one of them. */
 fun limusicTabIndex(
-    entry: NavBackStackEntry,
-    tabs: List<BottomNavScreen> = BottomNavScreen.allTabs,
-): Int =
-    tabs.indexOfFirst { tab -> entry.matchesTab(tab) }
-
-/** Position of [destination] in the tab bar, or -1 when it is not a tab. */
-fun limusicTabIndex(destination: NavDestination, tabs: List<BottomNavScreen> = BottomNavScreen.allTabs): Int =
-    tabs.indexOfFirst {
-        if (it.destination is LibraryDynamicPlaylistDestination) {
-            destination.hasRoute(LibraryDynamicPlaylistDestination::class)
-        } else {
-            destination.hasRoute(it.destination::class)
-        }
-    }
+    destination: NavDestination,
+    tabs: List<BottomNavScreen>,
+): Int = tabs.indexOfFirst { destination.hasRoute(it.destination::class) }
 
 /**
  * Opens a tab the way tapping it does. A tab opened with a plain navigate (an app link) sits on
  * Home's stack, and the next Home tap then saves and restores it straight back.
  */
-fun NavController.navigateToTab(
-    destination: Any,
-) {
+fun NavController.navigateToTab(destination: Any) =
     navigate(destination) {
         popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }
-}
 
 /**
- * The bottom tabs. The tab you are in is the last tab on the back stack, so it stays lit on the
- * album or artist pages opened from it. Tapping it there goes back to the tab's root; tapping it on
- * the root calls [onReselect] (scroll to top or refresh). [compact] is the "Compact navigation bar"
- * setting: icons only, centred in a 56dp bar. Off, the bar keeps Material's own 80dp and labels.
+ * The bottom tabs, the user's [tabs] in their order. The tab you are in is the last tab on the back
+ * stack, so it stays lit on the album or artist pages opened from it. Tapping it there goes back to
+ * the tab's root; tapping it on the root calls [onReselect] (scroll to top or refresh). [compact] is
+ * the "Compact navigation bar" setting: icons only, centred in a 56dp bar. Off, the bar keeps
+ * Material's own 80dp and labels.
  */
 @Composable
 fun LimusicNavigationBar(
     navController: NavController,
+    tabs: List<BottomNavScreen>,
     modifier: Modifier = Modifier,
-    tabs: List<BottomNavScreen> = listOf(BottomNavScreen.Home, BottomNavScreen.Search, BottomNavScreen.Library),
-    currentLibraryChip: LibraryChipType = LibraryChipType.YOUR_LIBRARY,
-    onLibraryTabRequest: (LibraryChipType?, Boolean) -> Unit = { _, _ -> },
     compact: Boolean = false,
     onReselect: (KClass<*>) -> Unit = {},
 ) {
     val backStack by navController.currentBackStack.collectAsState()
-    val tabEntry = backStack.indexOfLast { entry ->
-        tabs.any { tab -> entry.matchesTab(tab) }
-    }
-    val stackTab = backStack.getOrNull(tabEntry)?.let { entry ->
-        limusicTabIndex(entry, tabs)
-    } ?: -1
-    // Settings and the pages opened from it belong to no tab, so none is lit there (unless Settings is a bottom tab)
+    val tabEntry = backStack.indexOfLast { limusicTabIndex(it.destination, tabs) >= 0 }
+    val stackTab = backStack.getOrNull(tabEntry)?.destination?.let { limusicTabIndex(it, tabs) } ?: -1
+    // Settings and the pages opened from it belong to no tab, so none is lit there.
     val inSettings = backStack.indexOfLast { it.destination.hasRoute(SettingsDestination::class) } > tabEntry
-    val isSettingsTab = tabs.any { it.destination is SettingsDestination }
-    val currentTab = if (inSettings && !isSettingsTab) -1 else stackTab
-    val onTabRoot = backStack.lastOrNull()?.let { entry ->
-        tabs.getOrNull(currentTab)?.let { tab -> entry.matchesTab(tab) }
-    } == true
+    val currentTab = if (inSettings) -1 else stackTab
+    val onTabRoot = backStack.lastOrNull()?.destination?.let { limusicTabIndex(it, tabs) } == currentTab
     Column(modifier) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NavigationBar(
@@ -126,35 +88,23 @@ fun LimusicNavigationBar(
                 NavigationBarItem(
                     selected = selected,
                     onClick = {
-                        val libraryChip = tab.libraryChip
-                        if (libraryChip != null) {
-                            onLibraryTabRequest(libraryChip, true)
-                        } else {
-                            onLibraryTabRequest(null, false)
-                        }
-
-                        val targetOnStack = backStack.any { entry ->
-                            if (tab.destination is LibraryDynamicPlaylistDestination) {
-                                entry.destination.hasRoute(LibraryDynamicPlaylistDestination::class)
-                            } else {
-                                entry.destination.hasRoute(tab.destination::class)
-                            }
-                        }
-
                         if (selected && onTabRoot) {
                             onReselect(tab.destination::class)
                         } else if (index == stackTab) {
                             // Restoring this tab's saved stack would bring the same page back, so pop to its root.
                             navController.popBackStack(tab.destination, inclusive = false)
-                        } else if (targetOnStack) {
-                            // Target tab is already in the back stack under a sub-screen, pop back to it.
-                            navController.popBackStack(tab.destination, inclusive = false)
                         } else {
                             navController.navigateToTab(tab.destination)
                         }
                     },
-                    icon = { tab.icon() },
-                    label = if (compact) null else ({ Text(stringResource(tab.title), style = typo().bodySmall) }),
+                    // Without its label the icon names the tab, for screen readers.
+                    icon = { Icon(tab.icon, contentDescription = if (compact) stringResource(tab.title) else null) },
+                    label =
+                        if (compact) {
+                            null
+                        } else {
+                            { Text(stringResource(tab.title), style = typo().bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        },
                     colors =
                         NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,

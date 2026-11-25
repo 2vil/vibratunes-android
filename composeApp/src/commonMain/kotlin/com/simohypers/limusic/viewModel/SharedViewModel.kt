@@ -873,21 +873,6 @@ class SharedViewModel(
         _libraryTabRequest.value = tab
     }
 
-    private val _lockedLibraryChip = MutableStateFlow<LibraryChipType?>(null)
-    val lockedLibraryChip: StateFlow<LibraryChipType?> = _lockedLibraryChip.asStateFlow()
-
-    fun setLockedLibraryChip(chip: LibraryChipType?) {
-        _lockedLibraryChip.value = chip
-    }
-
-    val bottomBarTabs: Flow<String> = dataStoreManager.bottomBarTabs
-
-    fun setBottomBarTabs(tabs: String) {
-        viewModelScope.launch {
-            dataStoreManager.setBottomBarTabs(tabs)
-        }
-    }
-
     fun putString(
         key: String,
         value: String,
@@ -1319,6 +1304,13 @@ class SharedViewModel(
         viewModelScope.launch { dataStoreManager.putString(COMPACT_NAV_BAR, if (on) TRUE else "") }
     }
 
+    /** The tab bar's tabs as `BottomNavScreen` keys in order, "" until the user first picks. */
+    val bottomBarTabs: StateFlow<String> = dataStoreManager.getString(BOTTOM_BAR_TABS).map { it.orEmpty() }.stateInStored()
+
+    fun setBottomBarTabs(keys: String) {
+        viewModelScope.launch { dataStoreManager.putString(BOTTOM_BAR_TABS, keys) }
+    }
+
     /**
      * The colour "Adapt colors to artwork" last took from a cover, saved so a cold start opens in the
      * restored track's colour instead of the theme's accent while the queue and its cover load. Read
@@ -1549,3 +1541,4 @@ private const val NEW_PLAYLIST_WHERE = "new_playlist_where"
 private const val ARTWORK_COLOR = "artwork_color"
 private const val FLAT_PROGRESS_BAR = "flat_progress_bar"
 private const val COMPACT_NAV_BAR = "compact_nav_bar"
+private const val BOTTOM_BAR_TABS = "bottom_bar_tabs"
