@@ -1,14 +1,14 @@
 import java.util.Properties
 
 // The app's signing key lives outside the repo. local.properties names its properties file as
-// limusic.signing (storeFile, storePassword, keyAlias, keyPassword). Without it, debug builds use
+// vibratunes.signing (storeFile, storePassword, keyAlias, keyPassword). Without it, debug builds use
 // the default debug key and release builds are unsigned.
-val limusicSigning: Properties? =
+val vibratunesSigning: Properties? =
     rootProject
         .file("local.properties")
         .takeIf { it.exists() }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
-        ?.getProperty("limusic.signing")
+        ?.getProperty("vibratunes.signing")
         ?.let { File(it) }
         ?.takeIf { it.exists() }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
@@ -61,8 +61,8 @@ android {
     }
 
     signingConfigs {
-        limusicSigning?.let { props ->
-            create("limusic") {
+        vibratunesSigning?.let { props ->
+            create("vibratunes") {
                 storeFile = file(props.getProperty("storeFile"))
                 storePassword = props.getProperty("storePassword")
                 keyAlias = props.getProperty("keyAlias")
@@ -79,7 +79,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.findByName("limusic")
+            signingConfig = signingConfigs.findByName("vibratunes")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -98,7 +98,7 @@ android {
         debug {
             isMinifyEnabled = false
             // The id stays com.vibratunes.app in every build type: it is the installed app.
-            signingConfig = signingConfigs.findByName("limusic") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("vibratunes") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

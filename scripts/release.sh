@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="SimoHypers/limusic-android"
+REPO="2vil/vibratunes-android"
 BRANCH="master"
 WORKFLOW="Android release"
 NOTES="${1:-}"
@@ -102,7 +102,7 @@ fi
 OK=1
 ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
 for abi in arm64-v8a armeabi-v7a x86_64 universal; do
-  grep -qx "limusic-$VERSION-$abi.apk" <<<"$ASSETS" || { echo "    MISSING: limusic-$VERSION-$abi.apk"; OK=0; }
+  grep -qx "vibratunes-$VERSION-$abi.apk" <<<"$ASSETS" || { echo "    MISSING: vibratunes-$VERSION-$abi.apk"; OK=0; }
 done
 if [ "$RC" = 0 ]; then
   LATEST="$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null || true)"
