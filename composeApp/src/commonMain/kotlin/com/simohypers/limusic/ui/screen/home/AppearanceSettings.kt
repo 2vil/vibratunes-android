@@ -77,7 +77,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import com.materialkolor.hct.Hct
+import com.simohypers.limusic.common.LibraryChipType
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.expect.ui.deleteFontFile
 import com.simohypers.limusic.expect.ui.filePickerResult
@@ -87,6 +89,8 @@ import com.simohypers.limusic.expect.ui.platformDynamicColorScheme
 import com.simohypers.limusic.ui.component.SettingGroup
 import com.simohypers.limusic.ui.component.SettingItem
 import com.simohypers.limusic.ui.component.SettingSheet
+import com.simohypers.limusic.ui.navigation.destination.home.NavigationSettingsDestination
+import com.simohypers.limusic.ui.navigation.destination.library.LibraryDestination
 import com.simohypers.limusic.ui.icon.Add
 import com.simohypers.limusic.ui.icon.Check
 import com.simohypers.limusic.ui.icon.Close
@@ -97,6 +101,7 @@ import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Undo
+import com.simohypers.limusic.ui.navigation.destination.home.LyricsSourcesDestination
 import com.simohypers.limusic.ui.theme.AccentSwatches
 import com.simohypers.limusic.ui.theme.AppFont
 import com.simohypers.limusic.ui.theme.Appearance
@@ -166,7 +171,10 @@ import kotlin.math.roundToInt
  * The page is its own preview, since the app repaints as soon as a pick is stored.
  */
 @Composable
-fun AppearanceSettings(sharedViewModel: SharedViewModel) {
+fun AppearanceSettings(
+    sharedViewModel: SharedViewModel,
+    navController: NavController? = null,
+) {
     val look by sharedViewModel.appearance.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.themeMode.collectAsStateWithLifecycle()
     val artworkColors by sharedViewModel.artworkColors.collectAsStateWithLifecycle()
@@ -297,6 +305,13 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
             subtitle = stringResource(Res.string.compact_nav_bar_info),
             smallSubtitle = true,
             switch = (compactNavBar to { sharedViewModel.setCompactNavBar(it) }),
+        )
+        SettingItem(
+            title = "Customize Navigation Bar",
+            subtitle = "Choose and reorder tabs shown in the bottom bar",
+            smallSubtitle = true,
+            navigates = true,
+            onClick = { navController?.navigate(NavigationSettingsDestination) },
         )
     }
 

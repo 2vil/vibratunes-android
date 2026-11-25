@@ -873,6 +873,21 @@ class SharedViewModel(
         _libraryTabRequest.value = tab
     }
 
+    private val _lockedLibraryChip = MutableStateFlow<LibraryChipType?>(null)
+    val lockedLibraryChip: StateFlow<LibraryChipType?> = _lockedLibraryChip.asStateFlow()
+
+    fun setLockedLibraryChip(chip: LibraryChipType?) {
+        _lockedLibraryChip.value = chip
+    }
+
+    val bottomBarTabs: Flow<String> = dataStoreManager.bottomBarTabs
+
+    fun setBottomBarTabs(tabs: String) {
+        viewModelScope.launch {
+            dataStoreManager.setBottomBarTabs(tabs)
+        }
+    }
+
     fun putString(
         key: String,
         value: String,

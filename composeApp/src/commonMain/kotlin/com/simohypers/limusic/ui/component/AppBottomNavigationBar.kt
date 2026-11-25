@@ -28,11 +28,14 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -251,10 +254,16 @@ internal fun FlatTabBar(
                                 screen.icon()
                             }
                             Text(
-                                stringResource(screen.title),
-                                style = typo().bodySmall,
+                                text = stringResource(screen.title),
+                                style = typo().labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    textAlign = TextAlign.Center,
+                                    letterSpacing = (-0.2).sp,
+                                ),
                                 color = contentColor,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
                             )
                         }
                     }

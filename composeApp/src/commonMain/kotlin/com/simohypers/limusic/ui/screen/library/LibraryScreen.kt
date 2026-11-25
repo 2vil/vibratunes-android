@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.toRoute
 import com.simohypers.limusic.common.LibraryChipType
 import com.simohypers.limusic.domain.data.entities.LocalPlaylistEntity
 import com.simohypers.limusic.domain.data.entities.SongEntity
@@ -64,6 +66,7 @@ import com.simohypers.limusic.extension.copy
 import com.simohypers.limusic.extension.isScrollingUp
 import com.simohypers.limusic.extension.ultraThinBarStyle
 import com.simohypers.limusic.getPlatform
+import com.simohypers.limusic.ui.navigation.destination.library.LibraryDestination
 import com.simohypers.limusic.ui.navigation.destination.library.LibraryDynamicPlaylistDestination
 import com.simohypers.limusic.viewModel.trackIds
 import limusic.composeapp.generated.resources.download_progress_short
@@ -124,6 +127,7 @@ import limusic.composeapp.generated.resources.podcasts
 @Composable
 fun LibraryScreen(
     innerPadding: PaddingValues,
+    initialChip: LibraryChipType = LibraryChipType.YOUR_LIBRARY,
     viewModel: LibraryViewModel = koinViewModel(),
     sharedViewModel: SharedViewModel = koinInject(),
     navController: NavController,
@@ -164,8 +168,13 @@ fun LibraryScreen(
         viewModel.getRecentlyAdded()
     }
 
+    LaunchedEffect(initialChip) {
+        viewModel.setCurrentScreen(initialChip)
+    }
+
     val chipRowState = rememberScrollState()
     val currentFilter by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val lockedChip by sharedViewModel.lockedLibraryChip.collectAsStateWithLifecycle()
     // A chip asked for by a deep link (limusic://library?tab=…), applied once and cleared.
     val libraryTabRequest by sharedViewModel.libraryTabRequest.collectAsStateWithLifecycle()
     LaunchedEffect(libraryTabRequest) {
@@ -497,23 +506,25 @@ fun LibraryScreen(
             }
             ListenTogetherIconButton { navController.navigate(ListenTogetherDestination) }
         }
-        Row(
-            modifier =
-                Modifier
-                    .horizontalScroll(chipRowState)
-                    .padding(horizontal = 15.dp)
-                    .padding(bottom = 8.dp)
-                    .background(Color.Transparent),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            LibraryChips.forEach { (type, icon, label) ->
-                Chip(
-                    isAnimated = false,
-                    isSelected = type == currentFilter,
-                    text = stringResource(label),
-                    icon = icon,
-                ) {
-                    viewModel.setCurrentScreen(type)
+        if (lockedChip == null || lockedChip == LibraryChipType.YOUR_LIBRARY) {
+            Row(
+                modifier =
+                    Modifier
+                        .horizontalScroll(chipRowState)
+                        .padding(horizontal = 15.dp)
+                        .padding(bottom = 8.dp)
+                        .background(Color.Transparent),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                LibraryChips.forEach { (type, icon, label) ->
+                    Chip(
+                        isAnimated = false,
+                        isSelected = type == currentFilter,
+                        text = stringResource(label),
+                        icon = icon,
+                    ) {
+                        viewModel.setCurrentScreen(type)
+                    }
                 }
             }
         }

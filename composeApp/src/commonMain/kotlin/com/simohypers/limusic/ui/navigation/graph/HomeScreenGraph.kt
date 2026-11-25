@@ -18,6 +18,7 @@ import com.simohypers.limusic.ui.navigation.destination.home.SettingsDestination
 import com.simohypers.limusic.ui.navigation.destination.home.DiscordSettingsDestination
 import com.simohypers.limusic.ui.navigation.destination.home.LyricsSourcesDestination
 import com.simohypers.limusic.ui.navigation.destination.home.LastfmSettingsDestination
+import com.simohypers.limusic.ui.navigation.destination.home.NavigationSettingsDestination
 import com.simohypers.limusic.ui.navigation.destination.home.SettingsSectionDestination
 import com.simohypers.limusic.ui.screen.home.ListenTogetherScreen
 import com.simohypers.limusic.ui.screen.home.MoodScreen
@@ -27,6 +28,7 @@ import com.simohypers.limusic.ui.screen.home.SettingScreen
 import com.simohypers.limusic.ui.screen.home.DiscordSettingsScreen
 import com.simohypers.limusic.ui.screen.home.LyricsSourcesScreen
 import com.simohypers.limusic.ui.screen.home.LastfmSettingsScreen
+import com.simohypers.limusic.ui.screen.home.NavigationSettingsScreen
 import com.simohypers.limusic.ui.screen.home.SettingsSection
 import com.simohypers.limusic.ui.screen.other.AppLogScreen
 import com.simohypers.limusic.ui.screen.other.CreditScreen
@@ -107,6 +109,12 @@ fun NavGraphBuilder.homeScreenGraph(
     }
     composable<DiscordSettingsDestination> {
         DiscordSettingsScreen(
+            navController = navController,
+            innerPadding = innerPadding,
+        )
+    }
+    composable<NavigationSettingsDestination> {
+        NavigationSettingsScreen(
             navController = navController,
             innerPadding = innerPadding,
         )
