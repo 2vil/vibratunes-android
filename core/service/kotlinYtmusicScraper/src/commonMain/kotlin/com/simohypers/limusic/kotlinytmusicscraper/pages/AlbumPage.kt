@@ -8,6 +8,7 @@ import com.simohypers.limusic.kotlinytmusicscraper.models.MusicTwoRowItemRendere
 import com.simohypers.limusic.kotlinytmusicscraper.models.SongItem
 import com.simohypers.limusic.kotlinytmusicscraper.models.Thumbnail
 import com.simohypers.limusic.kotlinytmusicscraper.models.Thumbnails
+import com.simohypers.limusic.kotlinytmusicscraper.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
 import com.simohypers.limusic.kotlinytmusicscraper.models.likeStatus
 import com.simohypers.limusic.kotlinytmusicscraper.models.oddElements
 import com.simohypers.limusic.kotlinytmusicscraper.models.splitBySeparator
@@ -128,6 +129,46 @@ data class AlbumPage(
                     musicVideoType = renderer.musicVideoType,
                 )
             }
+        }
+    }
+}
+
+private fun videoArt(videoId: String) = "https://i.ytimg.com/vi/$videoId/hq720.jpg"
+
+/** A row YouTube named as something other than the audio upload: a music video, or a fan upload. */
+internal fun SongItem.isVideoRow(): Boolean = musicVideoType != null && musicVideoType != MUSIC_VIDEO_TYPE_ATV
+
+/**
+ * Album rows that link the music video (desktop #442). Played as they are, they stream the video's
+ * sound with its intro or skit, so an album that runs track into track stops for it (issue #52). The
+ * album's `OLAK5uy_` audio playlist holds the album-audio uploads in track order: each video row
+ * takes its id, keeping the video as [SongItem.counterpart] for the Song/Video switch. The album then plays its
+ * audio whatever the video setting; the switch is the way to the video.
+ */
+// ponytail: matched by position, as on desktop, and only when both lists hold the same number of
+// tracks. A mismatch keeps the video ids.
+internal fun List<SongItem>.withAlbumAudio(audio: List<SongItem>): List<SongItem> {
+    if (audio.size != size) return this
+    return mapIndexed { i, row ->
+        val song = audio[i]
+        if (!row.isVideoRow() || song.isVideoRow()) {
+            row
+        } else {
+            row.copy(
+                id = song.id,
+                duration = song.duration ?: row.duration,
+                musicVideoType = song.musicVideoType ?: MUSIC_VIDEO_TYPE_ATV,
+                endpoint = song.endpoint,
+                // The row's like is the video's.
+                likeStatus = song.likeStatus,
+                // The phone takes a row with wide art for a video (Track.toGenericMediaItem): with the
+                // album cover, switching to the video played its sound under the cover.
+                counterpart =
+                    row.copy(
+                        thumbnail = videoArt(row.id),
+                        thumbnails = Thumbnails(listOf(Thumbnail(url = videoArt(row.id), width = 1280, height = 720))),
+                    ),
+            )
         }
     }
 }

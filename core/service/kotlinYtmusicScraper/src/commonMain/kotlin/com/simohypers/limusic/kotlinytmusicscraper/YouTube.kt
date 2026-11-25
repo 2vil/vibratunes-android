@@ -61,6 +61,8 @@ import com.simohypers.limusic.kotlinytmusicscraper.models.response.toLikeStatus
 import com.simohypers.limusic.kotlinytmusicscraper.models.response.toListAccountInfo
 import com.simohypers.limusic.kotlinytmusicscraper.models.youtube.YouTubeInitialPage
 import com.simohypers.limusic.kotlinytmusicscraper.pages.AlbumPage
+import com.simohypers.limusic.kotlinytmusicscraper.pages.isVideoRow
+import com.simohypers.limusic.kotlinytmusicscraper.pages.withAlbumAudio
 import com.simohypers.limusic.kotlinytmusicscraper.pages.ArtistPage
 import com.simohypers.limusic.kotlinytmusicscraper.pages.ArtistSection
 import com.simohypers.limusic.kotlinytmusicscraper.pages.SearchAllPage
@@ -506,8 +508,24 @@ class YouTube {
                         ?.musicResponsiveHeaderRenderer
                         ?.buttons
                         .savedToLibrary(),
-            )
+            ).withAlbumAudio()
         }
+
+    /**
+     * Video rows swapped for the album audio (see [withAlbumAudio]): one more request, and only for
+     * an album that has such rows. A failed fetch keeps the video ids.
+     */
+    private suspend fun AlbumPage.withAlbumAudio(): AlbumPage {
+        val playlistId = album.playlistId
+        if (songs.none { it.isVideoRow() } || !playlistId.startsWith("OLAK5uy_")) return this
+        val audio =
+            runCatching { ytMusic.playlist("VL$playlistId").body<BrowseResponse>().fromPlaylistToTrack() }
+                .onFailure { Logger.w(TAG, "Album audio playlist failed, keeping its video rows: ${it.message}") }
+                .getOrNull() ?: return this
+        val swapped = songs.withAlbumAudio(audio)
+        if (swapped === songs) Logger.w(TAG, "Album audio playlist has ${audio.size} tracks, the album ${songs.size}: keeping its video rows")
+        return copy(songs = swapped)
+    }
 
     /**
      * Joins every run of a description. A link run contributes its `urlEndpoint` URL rather than
