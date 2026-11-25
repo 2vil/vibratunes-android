@@ -253,7 +253,7 @@ private val ByTitle: Map<String, List<String>> =
 private val TitleToKind: Map<String, String> =
     ByTitle.flatMap { (kind, titles) -> titles.map { it.lowercase() to kind } }.toMap()
 
-/** The kind of a Home shelf, or null for one Home doesn't show (an artist's shelf, Recaps...). */
+/** The kind of a Home shelf, or null for one the table doesn't know (an artist's shelf, Recaps, a title in a language it lacks). */
 fun homeShelfKind(
     title: String,
     moreBrowseId: String?,
