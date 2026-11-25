@@ -129,7 +129,7 @@ private class HoldUntilPlayAudioSink(
  * Key difference from GstreamerPlayerAdapter:
  * - Uses [MergingMediaSourceFactory] + ResolvingDataSource for URL resolution
  *   (instead of manually extracting URLs via StreamRepository)
- * - Each ExoPlayer gets a single [MediaItem] and auto-resolves the stream URL
+ * - Each ExoPlayer plays one track, plus the next one appended for a gapless join
  */
 @SuppressLint("UnsafeOptInUsageError")
 @OptIn(UnstableApi::class)
@@ -540,6 +540,7 @@ internal class CrossfadeExoPlayerAdapter(
                 cancelFade()
                 cancelPrecaching()
                 clearAllPrecacheInternal()
+                dropAppended()
                 currentPlayer?.pause()
                 stopPositionUpdates()
                 abandonAudioFocusInternal()
@@ -636,15 +637,16 @@ internal class CrossfadeExoPlayerAdapter(
                             0,
                             0,
                         ).build(),
-                ).setWakeMode(
-                    // A download plays with no network, so it holds no Wi-Fi lock (issue #7).
-                    if (cacheKey != null && downloadCache.isFullyCached(cacheKey, 0L)) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK,
-                ).setHandleAudioBecomingNoisy(true)
+                ).setWakeMode(wakeModeFor(cacheKey))
+                .setHandleAudioBecomingNoisy(true)
                 .setSeekForwardIncrementMs(5000)
                 .setSeekBackIncrementMs(5000)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setRenderersFactory(perPlayerRenderers)
                 .build()
+        // A track appended for a gapless join (appendNext) starts loading now, not only once this one
+        // is fully buffered, so Next onto it is as quick as onto a precached player.
+        player.preloadConfiguration = ExoPlayer.PreloadConfiguration(30_000_000L)
         if (sharedAudioSessionId != C.AUDIO_SESSION_ID_UNSET) player.setAudioSessionId(sharedAudioSessionId)
 
         // The output the user picked, if any: a player built for the next track, a crossfade or a
@@ -691,6 +693,10 @@ internal class CrossfadeExoPlayerAdapter(
 
         return player
     }
+
+    /** A download plays with no network, so it holds no Wi-Fi lock (issue #7). */
+    private fun wakeModeFor(cacheKey: String?): Int =
+        if (cacheKey != null && downloadCache.isFullyCached(cacheKey, 0L)) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK
 
     // ========== Playback Control ==========
 
@@ -1426,6 +1432,7 @@ internal class CrossfadeExoPlayerAdapter(
         get() = internalShuffleModeEnabled
         set(value) {
             if (internalShuffleModeEnabled == value) return
+            val nextBefore = playlist.getOrNull(getNextMediaItemIndex())
 
             internalShuffleModeEnabled = value
 
@@ -1440,15 +1447,30 @@ internal class CrossfadeExoPlayerAdapter(
             notifyTimelineChanged("TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED")
 
             Logger.d(TAG, "Shuffle mode ${if (value) "enabled" else "disabled"}")
+            followNextChange(nextBefore)
         }
 
     override var repeatMode: Int
         get() = internalRepeatMode
         set(value) {
             if (internalRepeatMode == value) return
+            val nextBefore = playlist.getOrNull(getNextMediaItemIndex())
             internalRepeatMode = value
             listeners.forEach { it.onRepeatModeChanged(value) }
+            followNextChange(nextBefore)
         }
+
+    /**
+     * Shuffle and repeat change what plays next without touching the queue. A track appended for a
+     * gapless join would otherwise play anyway, repeat-one included.
+     */
+    private fun followNextChange(nextBefore: GenericMediaItem?) {
+        if (playlist.getOrNull(getNextMediaItemIndex()) === nextBefore) return
+        coroutineScope.launch {
+            clearPrecacheExceptCurrentInternal()
+            triggerPrecachingInternal()
+        }
+    }
 
     override var playWhenReady: Boolean
         get() = internalPlayWhenReady
@@ -1710,21 +1732,38 @@ internal class CrossfadeExoPlayerAdapter(
                         )
                     }
 
+                    // The track already appended behind this one for a gapless join: move onto it on the
+                    // same player, which has been loading it, the way Next used a precached player. The
+                    // swap below is a no-op for the same player.
+                    val joined = currentPlayer?.takeIf { it.playerError == null && it.appendedId() == videoId }
+
                     // Use precached player if available — unless it already failed. A precache that
                     // ran into a live broadcast holds nothing playable (its progressive source threw
                     // LiveStreamDetectedException while nobody was listening), so it is dropped and
                     // the track is built afresh, which now gives it an HLS source.
                     val cachedPlayerEntry =
-                        precachedPlayers.remove(videoId)?.let { cached ->
-                            if (cached.player.playerError == null) {
-                                cached
-                            } else {
-                                cached.player.release()
-                                null
+                        if (joined != null) {
+                            null
+                        } else {
+                            precachedPlayers.remove(videoId)?.let { cached ->
+                                if (cached.player.playerError == null) {
+                                    cached
+                                } else {
+                                    cached.player.release()
+                                    null
+                                }
                             }
                         }
                     val player: ExoPlayer
-                    if (cachedPlayerEntry?.player != null) {
+                    if (joined != null) {
+                        Logger.d(TAG, "Moving onto the appended $videoId")
+                        player = joined
+                        // The adapter already counts this track as current, so the transition event
+                        // this fires reads as ours (onMediaItemTransition) and is left alone.
+                        player.seekToDefaultPosition(player.currentMediaItemIndex + 1)
+                        player.removeMediaItems(0, player.currentMediaItemIndex)
+                        player.setWakeMode(wakeModeFor(player.currentMediaItem?.localConfiguration?.customCacheKey))
+                    } else if (cachedPlayerEntry?.player != null) {
                         Logger.d(TAG, "Using precached player for $videoId")
                         player = cachedPlayerEntry.player
                     } else {
@@ -1874,6 +1913,18 @@ internal class CrossfadeExoPlayerAdapter(
                     }
                 }
 
+                // The player moved onto the track appended behind the current one: at the end of
+                // this one (a gapless join), or a controller seeking there by the player's own index.
+                // A move the adapter made itself lands on the track it already counts as current.
+                override fun onMediaItemTransition(
+                    mediaItem: MediaItem?,
+                    reason: Int,
+                ) {
+                    if (player != currentPlayer || player.currentMediaItemIndex == 0) return
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && mediaItem?.mediaId == currentMediaItem?.mediaId) return
+                    joinedNext(player)
+                }
+
                 // ExoPlayer pauses itself here (setHandleAudioBecomingNoisy), past pause() and its log line.
                 override fun onPlayWhenReadyChanged(
                     playWhenReady: Boolean,
@@ -1909,6 +1960,19 @@ internal class CrossfadeExoPlayerAdapter(
                 override fun onPlayerError(error: PlaybackException) {
                     if (player != currentPlayer) {
                         Logger.d(TAG, "Ignoring onPlayerError from non-current player")
+                        return
+                    }
+
+                    // ExoPlayer raises an appended track's failure under the playing one, once that is
+                    // read to its end, so the two can't be told apart. Play on without the append: the
+                    // next track then loads on a player of its own and reports its own failure, and a
+                    // playing track that was at fault fails again and gets the handling below.
+                    player.appendedId()?.let { appended ->
+                        Logger.w(PLAYBACK, "error with $appended joined behind, playing on without it: ${error.errorCodeName}")
+                        appendRefusedFor = currentMediaItem
+                        dropAppended()
+                        player.prepare()
+                        triggerPrecachingInternal()
                         return
                     }
 
@@ -2142,6 +2206,76 @@ internal class CrossfadeExoPlayerAdapter(
                 }
             }
         }
+    }
+
+    // ========== Internal: Gapless ==========
+    //
+    // Desktop's single mpv playlist (issue #52). With no fade due, the next track is appended to the
+    // playing ExoPlayer instead of waiting on a precached player of its own, and ExoPlayer plays
+    // through the join on one audio output. Swapping players at the end left ~0.5 s of silence:
+    // the end had to drain, the old player was released, and the new one opened its output.
+    // ExoPlayer holds at most the current track and that next one.
+
+    /** The playing track whose append failed (see onPlayerError): its next one gets a player of its own. */
+    private var appendRefusedFor: GenericMediaItem? = null
+
+    private fun ExoPlayer.appendedId(): String? = if (mediaItemCount > currentMediaItemIndex + 1) getMediaItemAt(currentMediaItemIndex + 1).mediaId else null
+
+    /**
+     * Whether the next track joins this one on the same player. Crossfade needs it on a second
+     * player; a Listen Together room keeps the player-per-track path it was built on; a video or
+     * live track never takes part.
+     */
+    private fun joinsNextGaplessly(): Boolean {
+        val current = currentMediaItem ?: return false
+        return (!crossfadeEnabled || isWithinAlbum()) &&
+            !crossfadeSuppressed &&
+            current !== appendRefusedFor &&
+            currentPlayer?.currentMediaItem?.mediaId == current.mediaId &&
+            !isCurrentTrackVideo() &&
+            !isNextTrackVideo() &&
+            !isCurrentTrackLive()
+    }
+
+    private fun appendNext(next: GenericMediaItem) {
+        val player = currentPlayer ?: return
+        if (player.appendedId() == next.mediaId) return
+        dropAppended()
+        Logger.i(PLAYBACK, "preloading next: ${next.mediaId} (gapless)")
+        player.addMediaItem(next.toMedia3MediaItem())
+    }
+
+    private fun dropAppended() {
+        val player = currentPlayer ?: return
+        val after = player.currentMediaItemIndex + 1
+        if (player.mediaItemCount > after) player.removeMediaItems(after, player.mediaItemCount)
+    }
+
+    /** The playing player moved onto its appended track: the queue follows, as at a crossfade start. */
+    private fun joinedNext(player: ExoPlayer) {
+        player.removeMediaItems(0, player.currentMediaItemIndex)
+        val nextIndex = getNextMediaItemIndex()
+        val next = playlist.getOrNull(nextIndex)
+        if (next == null || nextIndex == localCurrentMediaItemIndex || next.mediaId != player.currentMediaItem?.mediaId) {
+            // The queue changed without the append following it. Play what the queue says.
+            Logger.w(PLAYBACK, "joined ${player.currentMediaItem?.mediaId}, which is not next in the queue")
+            if (hasNextMediaItem()) {
+                handleTrackEndInternal()
+            } else {
+                player.stop()
+                transitionToState(InternalState.ENDED)
+            }
+            return
+        }
+        Logger.i(PLAYBACK, "gapless into ${next.mediaId}")
+        localCurrentMediaItemIndex = nextIndex
+        unpinCurrent()
+        cachedPosition = player.currentPosition.coerceAtLeast(0L)
+        cachedDuration = player.duration.coerceAtLeast(0L)
+        player.setWakeMode(wakeModeFor(player.currentMediaItem?.localConfiguration?.customCacheKey))
+        listeners.forEach { it.onMediaItemTransition(next, PlayerConstants.MEDIA_ITEM_TRANSITION_REASON_AUTO) }
+        forwardingPlayer.notifyMediaItemChanged()
+        triggerPrecachingInternal()
     }
 
     // ========== Internal: Crossfade ==========
@@ -2397,18 +2531,16 @@ internal class CrossfadeExoPlayerAdapter(
                     // The track that will actually play next: follows shuffle and repeat. Repeat-one
                     // and the end of the queue both answer the current index, which precaches nothing.
                     val nextIndex = getNextMediaItemIndex()
-                    val nextVideoId = playlist.getOrNull(nextIndex)?.mediaId
                     // A live broadcast is not precached: buffered ahead, it would start behind the
                     // live edge by however long it waited in the queue.
-                    val indicesToPrecache =
-                        listOfNotNull(
-                            nextIndex.takeIf {
-                                it != localCurrentMediaItemIndex &&
-                                    nextVideoId != null &&
-                                    !precachedPlayers.containsKey(nextVideoId) &&
-                                    !LiveStreamRegistry.isLive(nextVideoId)
-                            },
-                        )
+                    val next = playlist.getOrNull(nextIndex)?.takeIf { nextIndex != localCurrentMediaItemIndex && !LiveStreamRegistry.isLive(it.mediaId) }
+                    if (next != null && joinsNextGaplessly()) {
+                        precachedPlayers.remove(next.mediaId)?.let { cleanupPlayerInternal(it.player) }
+                        appendNext(next)
+                        return@launch
+                    }
+                    dropAppended()
+                    val indicesToPrecache = listOfNotNull(nextIndex.takeIf { next != null && !precachedPlayers.containsKey(next.mediaId) })
 
                     for (idx in indicesToPrecache) {
                         if (!isActive) break
