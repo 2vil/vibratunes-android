@@ -936,7 +936,7 @@ fun SettingScreen(
                         }
                     }
                     SettingsSection.APPEARANCE -> {
-                        AppearanceSettings(sharedViewModel)
+                        AppearanceSettings(sharedViewModel, navController)
                         SettingGroup(title = stringResource(Res.string.appearance_player)) {
                             PlayerStylePicker(nowPlayingStyle, onStyle = sharedViewModel::setNowPlayingStyle)
                             SettingItem(

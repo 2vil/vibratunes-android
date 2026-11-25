@@ -248,7 +248,7 @@ internal fun FlatTabBar(
                             verticalArrangement = Arrangement.Center,
                         ) {
                             CompositionLocalProvider(LocalContentColor provides contentColor) {
-                                screen.icon()
+                                Icon(screen.icon, contentDescription = null)
                             }
                             Text(
                                 stringResource(screen.title),
@@ -298,7 +298,7 @@ internal fun FlatSearchButton(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
         ) {
-            BottomNavScreen.Search.icon()
+            Icon(BottomNavScreen.Search.icon, contentDescription = null)
         }
     }
 }
@@ -437,7 +437,7 @@ fun AppNavigationRail(
         Spacer(Modifier.weight(1f))
         bottomNavScreens.forEach { screen ->
             NavigationRailItem(
-                icon = screen.icon,
+                icon = { Icon(screen.icon, contentDescription = null) },
                 label = {
                     Text(
                         stringResource(screen.title),

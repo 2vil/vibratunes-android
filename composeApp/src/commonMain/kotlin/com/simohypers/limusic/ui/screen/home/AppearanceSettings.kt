@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import com.materialkolor.hct.Hct
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.expect.ui.deleteFontFile
@@ -87,6 +88,7 @@ import com.simohypers.limusic.expect.ui.platformDynamicColorScheme
 import com.simohypers.limusic.ui.component.SettingGroup
 import com.simohypers.limusic.ui.component.SettingItem
 import com.simohypers.limusic.ui.component.SettingSheet
+import com.simohypers.limusic.ui.navigation.destination.home.NavigationSettingsDestination
 import com.simohypers.limusic.ui.icon.Add
 import com.simohypers.limusic.ui.icon.Check
 import com.simohypers.limusic.ui.icon.Close
@@ -144,6 +146,8 @@ import limusic.composeapp.generated.resources.artwork_colors
 import limusic.composeapp.generated.resources.artwork_colors_description
 import limusic.composeapp.generated.resources.compact_nav_bar
 import limusic.composeapp.generated.resources.compact_nav_bar_info
+import limusic.composeapp.generated.resources.nav_bar_tabs
+import limusic.composeapp.generated.resources.nav_bar_tabs_info
 import limusic.composeapp.generated.resources.custom_color
 import limusic.composeapp.generated.resources.done
 import limusic.composeapp.generated.resources.now_playing_style_immersive
@@ -166,7 +170,10 @@ import kotlin.math.roundToInt
  * The page is its own preview, since the app repaints as soon as a pick is stored.
  */
 @Composable
-fun AppearanceSettings(sharedViewModel: SharedViewModel) {
+fun AppearanceSettings(
+    sharedViewModel: SharedViewModel,
+    navController: NavController,
+) {
     val look by sharedViewModel.appearance.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.themeMode.collectAsStateWithLifecycle()
     val artworkColors by sharedViewModel.artworkColors.collectAsStateWithLifecycle()
@@ -297,6 +304,13 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
             subtitle = stringResource(Res.string.compact_nav_bar_info),
             smallSubtitle = true,
             switch = (compactNavBar to { sharedViewModel.setCompactNavBar(it) }),
+        )
+        SettingItem(
+            title = stringResource(Res.string.nav_bar_tabs),
+            subtitle = stringResource(Res.string.nav_bar_tabs_info),
+            smallSubtitle = true,
+            navigates = true,
+            onClick = { navController.navigate(NavigationSettingsDestination) },
         )
     }
 
