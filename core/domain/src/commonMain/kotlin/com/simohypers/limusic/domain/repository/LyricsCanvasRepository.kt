@@ -1,6 +1,7 @@
 package com.simohypers.limusic.domain.repository
 
 import com.simohypers.limusic.domain.data.entities.LyricsEntity
+import com.simohypers.limusic.domain.data.model.browse.album.Track
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicException
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicRating
 import com.simohypers.limusic.domain.data.model.lyrics.LyricsSource
@@ -17,6 +18,8 @@ interface LyricsCanvasRepository {
     /**
      * The song's lyrics as Limusic finds them: cached, else asked down [order] (switched-off sources
      * skipped), the first synced answer winning over any plain one. Null when no source has any.
+     * [song]: [videoId] is a music video and this is its song ([Track.songOfVideo]); the video then
+     * shows a Limusic lyric synced on itself, else the song's lyrics moved onto its timing.
      */
     suspend fun getLyrics(
         videoId: String,
@@ -25,12 +28,13 @@ interface LyricsCanvasRepository {
         album: String?,
         durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track? = null,
     ): LyricsEntity?
 
     /**
      * One source alone, uncached: the source picker's preview, which also works for a source
      * switched off. Null when it has nothing; throws when it couldn't be asked. [searched]: title
-     * and artist were typed in the picker, not the song's own.
+     * and artist were typed in the picker, not the song's own. [song] as for [getLyrics].
      */
     suspend fun previewLyrics(
         videoId: String,
@@ -40,17 +44,23 @@ interface LyricsCanvasRepository {
         album: String?,
         durationSeconds: Int,
         searched: Boolean,
+        song: Track? = null,
     ): LyricsEntity?
 
     /**
      * Bring a cached lyric up to date behind the one on screen, as desktop does: Limusic's own is
      * asked once a day whether its revision moved, any other unpinned one once a week whether
      * Limusic has the song by now (only where Limusic would win [order]). True when the cache no
-     * longer holds what was shown, so the caller should ask [getLyrics] again.
+     * longer holds what was shown, so the caller should ask [getLyrics] again. With [song] (as for
+     * [getLyrics]) the song's row is the one checked, unless the video keeps a row of its own.
      */
     suspend fun recheckLyrics(
         videoId: String,
+        title: String,
+        artist: String,
+        durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track? = null,
     ): Boolean
 
     /** The votes on the song's live Limusic lyric, or null when it has none. Throws [LimusicException]. */

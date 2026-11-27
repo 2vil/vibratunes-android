@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 /**
  * Handle onto the OS-level media volume (Android's `STREAM_MUSIC`). Distinct from the app's own
  * playback volume ([com.simohypers.limusic.domain.mediaservice.handler.ControlState.volume]) — this is the
- * device slider, used by the Apple Music Now Playing style's volume row.
+ * device slider, used by the Immersive Now Playing style's volume row.
  */
 interface DeviceVolumeController {
     /** Current device volume as a 0f..1f fraction. Read during composition to observe changes. */

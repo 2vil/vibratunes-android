@@ -351,19 +351,10 @@ interface DataStoreManager {
     /** Pre-presets custom colour, 8-digit ARGB hex (e.g. "FF8ECAE6"). Read like [themeColorSource]. */
     val customThemeColor: Flow<String>
 
-    /** One of [NOW_PLAYING_STYLE_SPOTIFY], [NOW_PLAYING_STYLE_M3_EXPRESSIVE], [NOW_PLAYING_STYLE_APPLE_MUSIC]. */
+    /** One of [NOW_PLAYING_STYLE_SPOTIFY], [NOW_PLAYING_STYLE_M3_EXPRESSIVE], [NOW_PLAYING_STYLE_IMMERSIVE]. */
     val nowPlayingStyle: Flow<String>
 
     suspend fun setNowPlayingStyle(style: String)
-
-    /**
-     * One of [LYRICS_STYLE_CLASSIC], [LYRICS_STYLE_APPLE_MUSIC]. Deliberately independent of
-     * [nowPlayingStyle]: it governs how a lyric line is drawn, everywhere lyrics are drawn —
-     * the fullscreen sheet included, whichever player style is in use.
-     */
-    val lyricsStyle: Flow<String>
-
-    suspend fun setLyricsStyle(style: String)
 
     /**
      * Which languages get a Latin-script reading shown for their lyrics, as a comma-separated list
@@ -499,12 +490,10 @@ interface DataStoreManager {
 
         const val DEFAULT_THEME_COLOR_HEX = "FFA50036"
 
+        // The stored values keep the styles' first names, so saved picks and backups still read.
         const val NOW_PLAYING_STYLE_SPOTIFY = "SPOTIFY"
         const val NOW_PLAYING_STYLE_M3_EXPRESSIVE = "M3_EXPRESSIVE"
-        const val NOW_PLAYING_STYLE_APPLE_MUSIC = "APPLE_MUSIC"
-
-        const val LYRICS_STYLE_CLASSIC = "CLASSIC"
-        const val LYRICS_STYLE_APPLE_MUSIC = "APPLE_MUSIC"
+        const val NOW_PLAYING_STYLE_IMMERSIVE = "APPLE_MUSIC"
 
         const val EQUALIZER_TYPE_BUILT_IN = "BUILT_IN"
         const val EQUALIZER_TYPE_SYSTEM = "SYSTEM"

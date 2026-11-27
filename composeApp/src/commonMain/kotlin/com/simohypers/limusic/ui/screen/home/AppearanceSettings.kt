@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import com.materialkolor.hct.Hct
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.expect.ui.deleteFontFile
@@ -88,6 +89,7 @@ import com.simohypers.limusic.ui.component.SettingGroup
 import com.simohypers.limusic.ui.component.Stepper
 import com.simohypers.limusic.ui.component.SettingItem
 import com.simohypers.limusic.ui.component.SettingSheet
+import com.simohypers.limusic.ui.navigation.destination.home.NavigationSettingsDestination
 import com.simohypers.limusic.ui.icon.Add
 import com.simohypers.limusic.ui.icon.Check
 import com.simohypers.limusic.ui.icon.Close
@@ -145,9 +147,13 @@ import limusic.composeapp.generated.resources.appearance_tint_palette
 import limusic.composeapp.generated.resources.appearance_your_fonts
 import limusic.composeapp.generated.resources.artwork_colors
 import limusic.composeapp.generated.resources.artwork_colors_description
+import limusic.composeapp.generated.resources.compact_nav_bar
+import limusic.composeapp.generated.resources.compact_nav_bar_info
+import limusic.composeapp.generated.resources.nav_bar_tabs
+import limusic.composeapp.generated.resources.nav_bar_tabs_info
 import limusic.composeapp.generated.resources.custom_color
 import limusic.composeapp.generated.resources.done
-import limusic.composeapp.generated.resources.now_playing_style_apple_music
+import limusic.composeapp.generated.resources.now_playing_style_immersive
 import limusic.composeapp.generated.resources.now_playing_style_spotify
 import limusic.composeapp.generated.resources.requires_android_12
 import limusic.composeapp.generated.resources.reset
@@ -167,7 +173,10 @@ import kotlin.math.roundToInt
  * The page is its own preview, since the app repaints as soon as a pick is stored.
  */
 @Composable
-fun AppearanceSettings(sharedViewModel: SharedViewModel) {
+fun AppearanceSettings(
+    sharedViewModel: SharedViewModel,
+    navController: NavController,
+) {
     // The desktop zoom's levels, the same list minus nothing: parity over phone-sense, and the
     // stepper walks it either way.
     val zoomLevels = listOf(0.5f, 0.67f, 0.75f, 0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.5f, 1.75f)
@@ -176,6 +185,7 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
     val look by sharedViewModel.appearance.collectAsStateWithLifecycle()
     val themeMode by sharedViewModel.themeMode.collectAsStateWithLifecycle()
     val artworkColors by sharedViewModel.artworkColors.collectAsStateWithLifecycle()
+    val compactNavBar by sharedViewModel.compactNavBar.collectAsStateWithLifecycle()
     val modeDark = isDarkTheme(themeMode)
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     // Which font row's sheet is open (and which row a loaded file goes to): BODY, HEADING or null.
@@ -311,6 +321,19 @@ fun AppearanceSettings(sharedViewModel: SharedViewModel) {
                     onUp = { sharedViewModel.setUiScale(zoomLevels[zoomIndex + 1]) },
                 )
             },
+        )
+        SettingItem(
+            title = stringResource(Res.string.compact_nav_bar),
+            subtitle = stringResource(Res.string.compact_nav_bar_info),
+            smallSubtitle = true,
+            switch = (compactNavBar to { sharedViewModel.setCompactNavBar(it) }),
+        )
+        SettingItem(
+            title = stringResource(Res.string.nav_bar_tabs),
+            subtitle = stringResource(Res.string.nav_bar_tabs_info),
+            smallSubtitle = true,
+            navigates = true,
+            onClick = { navController.navigate(NavigationSettingsDestination) },
         )
     }
 
@@ -814,8 +837,8 @@ private fun FontOption(
 }
 
 /**
- * Now Playing style as three small drawings of the players, in the dark scheme they open in. Apple
- * Music keeps its "Android 12+" note: its treatments are blur, which older Android doesn't draw.
+ * Now Playing style as three small drawings of the players, in the dark scheme they open in.
+ * Immersive keeps its "Android 12+" note: its treatments are blur, which older Android doesn't draw.
  */
 @Composable
 fun PlayerStylePicker(
@@ -828,8 +851,8 @@ fun PlayerStylePicker(
             Triple(DataStoreManager.NOW_PLAYING_STYLE_SPOTIFY, stringResource(Res.string.now_playing_style_spotify), null),
             Triple(DataStoreManager.NOW_PLAYING_STYLE_M3_EXPRESSIVE, "M3 Expressive", null),
             Triple(
-                DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC,
-                stringResource(Res.string.now_playing_style_apple_music),
+                DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE,
+                stringResource(Res.string.now_playing_style_immersive),
                 stringResource(Res.string.requires_android_12),
             ),
         ).forEach { (id, label, note) ->
@@ -854,7 +877,7 @@ fun PlayerStylePicker(
                     ) {
                         when (id) {
                             DataStoreManager.NOW_PLAYING_STYLE_M3_EXPRESSIVE -> ExpressiveSketch(scheme)
-                            DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC -> AppleMusicSketch(scheme)
+                            DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE -> ImmersiveSketch(scheme)
                             else -> ClassicSketch(scheme)
                         }
                     }
@@ -963,9 +986,9 @@ private fun ExpressiveSketch(s: ColorScheme) {
     }
 }
 
-/** Apple Music: a frosted wash from the cover, the cover, white text and bare controls. */
+/** Immersive: a frosted wash from the cover, the cover, white text and bare controls. */
 @Composable
-private fun AppleMusicSketch(s: ColorScheme) {
+private fun ImmersiveSketch(s: ColorScheme) {
     Column(
         Modifier
             .fillMaxSize()

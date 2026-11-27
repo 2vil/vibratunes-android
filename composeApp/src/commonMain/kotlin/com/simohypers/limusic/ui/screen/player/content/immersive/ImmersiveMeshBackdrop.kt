@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,7 +39,7 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /*
- * The page behind the Apple Music MAIN view: the artwork's own colours reduced to a mesh and hung
+ * The page behind the Immersive MAIN view: the artwork's own colours reduced to a mesh and hung
  * from where the artwork stops. The colour directly under the picture is the colour the picture
  * ended on, so there is no join to hide.
  *
@@ -57,7 +59,7 @@ import kotlin.random.Random
  * bright the artwork's top band is (0..1), which sets the wash under the status bar.
  */
 @Immutable
-internal class AppleMusicMesh(
+internal class ImmersiveMesh(
     val image: ImageBitmap,
     val topLuminance: Float,
 )
@@ -68,11 +70,11 @@ internal class AppleMusicMesh(
  * ready, so a skip crossfades between two colourings instead of flashing the fallback between them.
  */
 @Composable
-internal fun rememberAppleMusicMesh(
+internal fun rememberImmersiveMesh(
     artwork: ImageBitmap?,
     seed: Int,
-): AppleMusicMesh? {
-    var mesh by remember { mutableStateOf<AppleMusicMesh?>(null) }
+): ImmersiveMesh? {
+    var mesh by remember { mutableStateOf<ImmersiveMesh?>(null) }
     LaunchedEffect(artwork, seed) {
         val source = artwork ?: return@LaunchedEffect
         // No suspension inside meshOf, so nothing here can swallow a cancellation.
@@ -86,18 +88,55 @@ internal fun rememberAppleMusicMesh(
  * [mesh] hung from [seam], the Y where the artwork's bottom edge sits: above it the mesh's first row
  * is held (that stretch is behind the artwork, which dissolves into it), below it the mesh fills the
  * rest of the page. A new mesh crossfades in over [MESH_FADE_MS].
+ *
+ * The player's pager drives the rest: [upcoming] is the mesh of the page sliding in, drawn on top at
+ * [upcomingAlpha] (read at draw time, so a swipe only redraws). When the pager reaches that page
+ * [snapKey] changes and [mesh] becomes the one already on screen: it takes over at once, without
+ * the time fade, which would replay the old colours under it.
  */
 @Composable
-internal fun AppleMusicMeshBackdrop(
-    mesh: AppleMusicMesh?,
+internal fun ImmersiveMeshBackdrop(
+    mesh: ImmersiveMesh?,
     seam: Dp,
     modifier: Modifier = Modifier,
+    snapKey: Any? = null,
+    upcoming: ImmersiveMesh? = null,
+    upcomingAlpha: () -> Float = { 0f },
+) {
+    // What was last on screen, for a new page whose mesh is not read yet: it keeps the old colours
+    // and fades to its own once they arrive, rather than flashing the fallback.
+    val lastShown = remember { arrayOfNulls<ImmersiveMesh>(1) }
+    key(snapKey) {
+        MeshLayers(
+            mesh = mesh,
+            seam = seam,
+            modifier = modifier,
+            initial = mesh ?: lastShown[0],
+            lastShown = lastShown,
+            upcoming = upcoming,
+            upcomingAlpha = upcomingAlpha,
+        )
+    }
+}
+
+@Composable
+private fun MeshLayers(
+    mesh: ImmersiveMesh?,
+    seam: Dp,
+    modifier: Modifier,
+    initial: ImmersiveMesh?,
+    lastShown: Array<ImmersiveMesh?>,
+    upcoming: ImmersiveMesh?,
+    upcomingAlpha: () -> Float,
 ) {
     // Two meshes rather than one animated colour: what crossfades here is a pair of pictures, and
     // the outgoing one has to stay drawable until the fade has finished with it.
-    var shown by remember { mutableStateOf(mesh) }
-    var incoming by remember { mutableStateOf<AppleMusicMesh?>(null) }
+    var shown by remember { mutableStateOf(initial) }
+    var incoming by remember { mutableStateOf<ImmersiveMesh?>(null) }
     val fade = remember { Animatable(0f) }
+    // Read here, in composition, so this reruns whenever a fade starts or lands.
+    val onScreen = incoming ?: shown
+    SideEffect { lastShown[0] = onScreen }
 
     LaunchedEffect(mesh) {
         val next = mesh ?: return@LaunchedEffect
@@ -133,6 +172,7 @@ internal fun AppleMusicMeshBackdrop(
         shown?.let { drawMesh(it, seamY, alpha = 1f) }
         // Read here, not in composition: an Animatable read in a draw lambda only redraws.
         incoming?.let { drawMesh(it, seamY, alpha = fade.value) }
+        upcoming?.let { drawMesh(it, seamY, alpha = upcomingAlpha()) }
         // Just enough to keep white text readable over a bright sleeve. The colours are the sleeve's
         // own, so a sleeve that ends dark should leave a dark page, not a greyed one.
         drawRect(brush = smoothScrimBrush(from = Color.Black.copy(alpha = 0.06f), to = Color.Black.copy(alpha = 0.30f)))
@@ -140,7 +180,7 @@ internal fun AppleMusicMeshBackdrop(
 }
 
 private fun DrawScope.drawMesh(
-    mesh: AppleMusicMesh,
+    mesh: ImmersiveMesh,
     seamY: Float,
     alpha: Float,
 ) {
@@ -172,7 +212,7 @@ private fun DrawScope.drawMesh(
 private fun meshOf(
     artwork: ImageBitmap,
     seed: Int,
-): AppleMusicMesh? {
+): ImmersiveMesh? {
     if (artwork.width < 1 || artwork.height < 1) return null
     // Averaged down to 36 cells, so resolution buys nothing. The height keeps the artwork's own
     // aspect: squashing one axis would reweight which part of the frame each cell is made of.
@@ -221,7 +261,7 @@ private fun meshOf(
             canvas.drawRect(x.toFloat(), y.toFloat(), x + 1f, y + 1f, paint)
         }
     }
-    return AppleMusicMesh(image, topLuminance)
+    return ImmersiveMesh(image, topLuminance)
 }
 
 // Every row but the seam row, carried sideways by one seeded amount and mirrored half the time.

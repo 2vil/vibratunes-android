@@ -833,27 +833,6 @@ class Ytmusic {
         }
     }
 
-    @OptIn(ExperimentalTime::class)
-    suspend fun atr(
-        url: String,
-        cpn: String,
-        customParams: Map<String, String>? = null,
-        playlistId: String?,
-    ) = httpClient.post(url) {
-        ytClient(WEB_REMIX, true)
-        headers {
-            append("X-Goog-Event-Time", now().toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds().toString())
-            append("X-Goog-Request-Time", now().toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds().toString())
-        }
-        parameter("cpn", cpn)
-        customParams?.forEach { (key, value) ->
-            parameter(key, value)
-        }
-        if (playlistId != null) {
-            parameter("list", playlistId)
-            parameter("referrer", "https://music.youtube.com/playlist?list=$playlistId")
-        }
-    }
 
     suspend fun subscribeChannel(channelId: String) =
         httpClient.post("subscription/subscribe") {

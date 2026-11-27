@@ -124,6 +124,8 @@ import limusic.composeapp.generated.resources.podcasts
 @Composable
 fun LibraryScreen(
     innerPadding: PaddingValues,
+    // Set for the tabs that are one chip of Library (Albums, Songs...): that chip, no chip row.
+    lockedChip: LibraryChipType? = null,
     viewModel: LibraryViewModel = koinViewModel(),
     sharedViewModel: SharedViewModel = koinInject(),
     navController: NavController,
@@ -165,11 +167,12 @@ fun LibraryScreen(
     }
 
     val chipRowState = rememberScrollState()
-    val currentFilter by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val chosenChip by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val currentFilter = lockedChip ?: chosenChip
     // A chip asked for by a deep link (limusic://library?tab=…), applied once and cleared.
     val libraryTabRequest by sharedViewModel.libraryTabRequest.collectAsStateWithLifecycle()
     LaunchedEffect(libraryTabRequest) {
-        libraryTabRequest?.let {
+        libraryTabRequest?.takeIf { lockedChip == null }?.let {
             viewModel.setCurrentScreen(it)
             sharedViewModel.requestLibraryTab(null)
         }
@@ -451,7 +454,7 @@ fun LibraryScreen(
             // Blocks taps on the bar's empty parts from reaching the list beneath, as on Home.
             .pointerInput(Unit) {},
     ) {
-        LimusicTabTopBar(title = stringResource(Res.string.library)) {
+        LimusicTabTopBar(title = stringResource(LibraryChips.find { it.first == lockedChip }?.third ?: Res.string.library)) {
             // Only with something to push: what was liked, followed or saved while signed out
             // (or before likes went to YouTube) lives on the phone until this puts it on the account.
             if (unsyncedCount > 0) {
@@ -497,23 +500,25 @@ fun LibraryScreen(
             }
             ListenTogetherIconButton { navController.navigate(ListenTogetherDestination) }
         }
-        Row(
-            modifier =
-                Modifier
-                    .horizontalScroll(chipRowState)
-                    .padding(horizontal = 15.dp)
-                    .padding(bottom = 8.dp)
-                    .background(Color.Transparent),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            LibraryChips.forEach { (type, icon, label) ->
-                Chip(
-                    isAnimated = false,
-                    isSelected = type == currentFilter,
-                    text = stringResource(label),
-                    icon = icon,
-                ) {
-                    viewModel.setCurrentScreen(type)
+        if (lockedChip == null) {
+            Row(
+                modifier =
+                    Modifier
+                        .horizontalScroll(chipRowState)
+                        .padding(horizontal = 15.dp)
+                        .padding(bottom = 8.dp)
+                        .background(Color.Transparent),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                LibraryChips.forEach { (type, icon, label) ->
+                    Chip(
+                        isAnimated = false,
+                        isSelected = type == currentFilter,
+                        text = stringResource(label),
+                        icon = icon,
+                    ) {
+                        viewModel.setCurrentScreen(type)
+                    }
                 }
             }
         }

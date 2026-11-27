@@ -9,6 +9,8 @@ import com.simohypers.limusic.domain.extension.decodeHtmlEntities
 data class WordTiming(
     val text: String,
     val startTimeMs: Long,
+    /** When the singer lets go of it, if the source said; else the word runs to the next one. */
+    val endTimeMs: Long? = null,
 )
 
 /**
@@ -25,6 +27,7 @@ data class ParsedRichSyncLine(
  *
  * Expected format: <MM:SS.mm> word <MM:SS.mm> word ...
  * Example: <00:16.62> Và <00:16.64> em <00:16.68> nói
+ * A stamp with no text after it is when the word before it ends: <00:16.62>Và<00:16.63> <00:16.64>em
  *
  * @param words The rich sync string containing timestamps and words
  * @param lineStartTimeMs The start time of the line as a string
@@ -77,9 +80,10 @@ fun parseRichSyncWords(
         // Get the text between timestamps and trim it
         val textBetween = words.substring(startPos, endPos).trim()
 
-        // Only add if there's actual text (not just whitespace or empty)
         if (textBetween.isNotBlank()) {
             wordTimings.add(WordTiming(text = decodeHtmlEntities(textBetween), startTimeMs = timeMs))
+        } else if (wordTimings.isNotEmpty() && wordTimings.last().endTimeMs == null) {
+            wordTimings[wordTimings.lastIndex] = wordTimings.last().copy(endTimeMs = timeMs)
         }
     }
 

@@ -1,4 +1,4 @@
-package com.simohypers.limusic.ui.screen.player.content.applemusic
+package com.simohypers.limusic.ui.screen.player.content.immersive
 
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.Crossfade
@@ -102,8 +102,8 @@ import com.simohypers.limusic.ui.icon.Repeat
 import com.simohypers.limusic.ui.icon.RepeatOne
 import com.simohypers.limusic.ui.icon.Shuffle
 import com.simohypers.limusic.ui.icon.LimusicIcons
-import com.simohypers.limusic.ui.icon.Star
-import com.simohypers.limusic.ui.icon.StarBorder
+import com.simohypers.limusic.ui.icon.Favorite
+import com.simohypers.limusic.ui.icon.FavoriteBorder
 import com.simohypers.limusic.ui.icon.VolumeDown
 import com.simohypers.limusic.ui.icon.VolumeUp
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
@@ -117,15 +117,15 @@ import limusic.composeapp.generated.resources.live_badge
 import kotlin.math.roundToLong
 import org.koin.compose.koinInject
 
-/** Which body the dock is currently showing. Held by the top-level Apple Music composable. */
-internal enum class AppleMusicView { MAIN, LYRICS, QUEUE }
+/** Which body the dock is currently showing. Held by the top-level Immersive composable. */
+internal enum class ImmersiveView { MAIN, LYRICS, QUEUE }
 
 /**
  * The page gradient's colour at [fraction] of the screen height: the seed barely darkened at the
  * top, ~32%-darkened by mid-page (48%), ~78%-darkened at the bottom. Used to BUILD the gradient
  * and to land the artwork fade on the gradient's own colour at the exact Y where it ends.
  */
-internal fun appleMusicGradientColorAt(
+internal fun immersiveGradientColorAt(
     seedColor: Color,
     fraction: Float,
 ): Color {
@@ -142,16 +142,16 @@ internal fun appleMusicGradientColorAt(
     }
 }
 
-internal val AppleMusicTextSecondary = Color.White.copy(alpha = 0.72f)
+internal val ImmersiveTextSecondary = Color.White.copy(alpha = 0.72f)
 
 // Artist, times and captions.
-internal val AppleMusicSecondaryText = Color.White.copy(alpha = 0.55f)
-internal val AppleMusicPillInactive = Color.White.copy(alpha = 0.24f)
-internal val AppleMusicTrackInactive = Color.White.copy(alpha = 0.26f)
-internal val AppleMusicTrackActive = Color.White.copy(alpha = 0.92f)
+internal val ImmersiveSecondaryText = Color.White.copy(alpha = 0.55f)
+internal val ImmersivePillInactive = Color.White.copy(alpha = 0.24f)
+internal val ImmersiveTrackInactive = Color.White.copy(alpha = 0.26f)
+internal val ImmersiveTrackActive = Color.White.copy(alpha = 0.92f)
 
 @Immutable
-internal data class AppleMusicTypography(
+internal data class ImmersiveTypography(
     val mainTitle: TextStyle,
     val mainArtist: TextStyle,
     val compactTitle: TextStyle,
@@ -166,7 +166,7 @@ internal data class AppleMusicTypography(
 )
 
 /**
- * Maps every Apple Music text slot 1:1 onto the [typo] roles the OTHER styles use for the same
+ * Maps every Immersive text slot 1:1 onto the [typo] roles the OTHER styles use for the same
  * element — no custom sizes, no custom scaling (owner's rule: this style types like the rest of
  * the app). Precedents: M3E's track title/artist row (titleMedium/bodyMedium), LyricsView's
  * in-player line (headlineMedium), SongFullWidthItems rows (titleSmall/bodySmall), the queue
@@ -177,11 +177,11 @@ internal data class AppleMusicTypography(
  * translucent white stays lighter than whatever it sits on.
  */
 @Composable
-internal fun rememberAppleMusicTypography(): AppleMusicTypography {
+internal fun rememberImmersiveTypography(): ImmersiveTypography {
     val t = typo()
-    return AppleMusicTypography(
+    return ImmersiveTypography(
         mainTitle = t.titleMedium,
-        mainArtist = t.bodyMedium.copy(color = AppleMusicSecondaryText),
+        mainArtist = t.bodyMedium.copy(color = ImmersiveSecondaryText),
         // The compact header — Lyrics, Queue, and the row under a running canvas — carries the
         // SIZES FullscreenLyricsSheet uses for the same job (LyricsView.kt: labelSmall over
         // bodySmall), while mainTitle/mainArtist stay 18/13 because they head the controller
@@ -189,11 +189,11 @@ internal fun rememberAppleMusicTypography(): AppleMusicTypography {
         // color into every role — title* carry titleColor, body*/label* carry bodyColor — so
         // switching the title to labelSmall outright would also switch it to the subtitle's grey.
         compactTitle = t.titleMedium.copy(fontSize = t.labelSmall.fontSize),
-        compactArtist = t.bodySmall.copy(color = AppleMusicSecondaryText),
+        compactArtist = t.bodySmall.copy(color = ImmersiveSecondaryText),
         queueSectionHeader = t.titleMedium,
-        queueSectionSubtitle = t.bodySmall.copy(color = AppleMusicSecondaryText),
-        times = t.bodyMedium.copy(color = AppleMusicSecondaryText),
-        footer = t.bodySmall.copy(color = AppleMusicSecondaryText),
+        queueSectionSubtitle = t.bodySmall.copy(color = ImmersiveSecondaryText),
+        times = t.bodyMedium.copy(color = ImmersiveSecondaryText),
+        footer = t.bodySmall.copy(color = ImmersiveSecondaryText),
         idleLyric = t.bodyMedium.copy(color = Color.White),
         idleTranslated = t.bodyMedium.copy(color = Color.Yellow),
         // The line over the progress bar is the inline lyric line Classic and M3E draw under their
@@ -211,7 +211,7 @@ internal fun rememberAppleMusicTypography(): AppleMusicTypography {
  * for the reason it gives: a linear ramp has a corner where it leaves 0, and the eye reads that corner
  * as an edge — on the artwork it was a visible line where the picture started to dissolve.
  */
-internal fun Modifier.appleMusicVerticalFadeEdges(
+internal fun Modifier.immersiveVerticalFadeEdges(
     topFade: Dp,
     bottomFade: Dp,
 ): Modifier =
@@ -230,10 +230,10 @@ internal fun Modifier.appleMusicVerticalFadeEdges(
 
 /**
  * Transparent at [transparentAt] and beyond it, opaque at [opaqueAt] and beyond it, on the same
- * smoothstep curve as [appleMusicVerticalFadeEdges] — a fade placed anywhere in the element rather
+ * smoothstep curve as [immersiveVerticalFadeEdges] — a fade placed anywhere in the element rather
  * than at its edge, in either direction.
  */
-internal fun Modifier.appleMusicFadeBetween(
+internal fun Modifier.immersiveFadeBetween(
     transparentAt: Dp,
     opaqueAt: Dp,
 ): Modifier =
@@ -290,12 +290,12 @@ private fun fadeEdgeStops(
  * and nothing here consumes events, so clicks and slider drags still land.
  */
 @Composable
-internal fun Modifier.appleMusicPressInflate(pressedScale: Float = 1.35f): Modifier {
+internal fun Modifier.immersivePressInflate(pressedScale: Float = 1.35f): Modifier {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (pressed) pressedScale else 1f,
         animationSpec = spring(dampingRatio = 0.45f, stiffness = 380f),
-        label = "appleMusicPressInflate",
+        label = "immersivePressInflate",
     )
     return this
         .graphicsLayer {
@@ -317,7 +317,7 @@ internal fun Modifier.appleMusicPressInflate(pressedScale: Float = 1.35f): Modif
  * Box+clickable and not an unconstrained [com.simohypers.limusic.ui.component.RippleIconButton].
  */
 @Composable
-internal fun AppleMusicGlyphButton(
+internal fun ImmersiveGlyphButton(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -326,19 +326,19 @@ internal fun AppleMusicGlyphButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.appleMusicPressInflate().size(size).clip(CircleShape),
+        modifier = modifier.immersivePressInflate().size(size).clip(CircleShape),
     ) {
         Icon(imageVector = icon, contentDescription = "", tint = tint)
     }
 }
 
 /**
- * The ⊕ (YouTube-liked) / ☆ (favourite, with the heart-burst) / ⋯ (more sheet) trio — shared by
+ * The ⊕ (YouTube-liked) / ♥ (favourite, with the heart-burst) / ⋯ (more sheet) trio — shared by
  * the MAIN title row and the LYRICS/QUEUE compact header. Fires the heart-burst on the tap that
  * likes, never on state, matching every other style's like button.
  */
 @Composable
-internal fun AppleMusicHeaderActions(
+internal fun ImmersiveHeaderActions(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
     modifier: Modifier = Modifier,
@@ -346,13 +346,13 @@ internal fun AppleMusicHeaderActions(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         val likeBurst = rememberHeartBurstState()
         Box(
             modifier =
                 Modifier
-                    .appleMusicPressInflate()
+                    .immersivePressInflate()
                     .size(32.dp)
                     .heartBurst(likeBurst)
                     .clip(CircleShape)
@@ -362,28 +362,29 @@ internal fun AppleMusicHeaderActions(
                     },
             contentAlignment = Alignment.Center,
         ) {
-            Crossfade(targetState = state.controllerState.isLiked, label = "appleMusicFavorite") { liked ->
+            Crossfade(targetState = state.controllerState.isLiked, label = "immersiveFavorite") { liked ->
                 Icon(
-                    imageVector = if (liked) LimusicIcons.Star else LimusicIcons.StarBorder,
+                    imageVector = if (liked) LimusicIcons.Favorite else LimusicIcons.FavoriteBorder,
                     contentDescription = "",
                     tint = Color.White,
-                    modifier = Modifier.size(32.dp),
+                    // The ⋯ glyph's size; the 32dp box around it keeps the tap target.
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
-        AppleMusicGlyphButton(icon = LimusicIcons.MoreVert, onClick = { actions.onShowMoreSheet() })
+        ImmersiveGlyphButton(icon = LimusicIcons.MoreVert, onClick = { actions.onShowMoreSheet() })
     }
 }
 
 /**
- * 56dp rounded thumbnail + title/artist column + [AppleMusicHeaderActions], used where the
+ * 56dp rounded thumbnail + title/artist column + [ImmersiveHeaderActions], used where the
  * artwork isn't on screen (LYRICS and QUEUE bodies).
  */
 @Composable
-internal fun AppleMusicCompactHeader(
+internal fun ImmersiveCompactHeader(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -430,13 +431,13 @@ internal fun AppleMusicCompactHeader(
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
-        AppleMusicHeaderActions(state = state, actions = actions)
+        ImmersiveHeaderActions(state = state, actions = actions)
     }
 }
 
 /** 8.4dp track shared by the progress bar and the volume row — same visual language, only the color and callbacks differ. */
 @Composable
-internal fun AppleMusicThinSlider(
+internal fun ImmersiveThinSlider(
     value: Float,
     activeColor: Color,
     onValueChange: (Float) -> Unit,
@@ -453,7 +454,7 @@ internal fun AppleMusicThinSlider(
     val trackHeight by animateDpAsState(
         targetValue = if (pressed || dragged) 16.8.dp else 8.4.dp,
         animationSpec = spring(dampingRatio = 0.5f, stiffness = 300f),
-        label = "appleMusicSliderInflate",
+        label = "immersiveSliderInflate",
     )
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Slider(
@@ -469,8 +470,8 @@ internal fun AppleMusicThinSlider(
                 // reads as square). At value 0 the inactive half owns the entire bar, so its square
                 // inner end lands on the LEFT while its round outer end sits on the right — the
                 // mismatched bar. Clipping ONE container and drawing the played portion inside it
-                // keeps both ends of the bar equally round, and gives the played portion the flat
-                // right edge Apple's own bar has.
+                // keeps both ends of the bar equally round, and gives the played portion a flat
+                // right edge.
                 val fraction = value.coerceIn(0f, 1f)
                 Box(
                     modifier =
@@ -478,7 +479,7 @@ internal fun AppleMusicThinSlider(
                             .fillMaxWidth()
                             .height(trackHeight)
                             .clip(RoundedCornerShape(percent = 50))
-                            .background(AppleMusicTrackInactive),
+                            .background(ImmersiveTrackInactive),
                 ) {
                     Box(
                         modifier =
@@ -490,7 +491,7 @@ internal fun AppleMusicThinSlider(
                 }
             },
             thumb = {
-                // No thumb — the approved mock and Apple's own bars are track-only; the
+                // No thumb — the approved mock is track-only; the
                 // active/inactive split marks the position (same call the MiniPlayer makes).
                 Spacer(Modifier.size(0.dp))
             },
@@ -500,9 +501,9 @@ internal fun AppleMusicThinSlider(
 
 /** Elapsed time, the quality line (hidden when unknown), and the remaining time as "-m:ss". */
 @Composable
-internal fun AppleMusicTimesRow(
+internal fun ImmersiveTimesRow(
     state: NowPlayingContentState,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
     modifier: Modifier = Modifier,
 ) {
     // `total` stays -1 until the player reports a duration, and SimpleMediaState.Ready carries
@@ -561,7 +562,7 @@ internal fun AppleMusicTimesRow(
             // Sweep head for the "Crossfading" shimmer, 0..1. Runs UNCONDITIONALLY — put behind the
             // crossfade check it would restart from zero every time the label appears, which is the
             // same reason the other two styles declare it outside their own visibility gate.
-            val sweepTransition = rememberInfiniteTransition(label = "appleMusicCrossfadeSweep")
+            val sweepTransition = rememberInfiniteTransition(label = "immersiveCrossfadeSweep")
             val crossfadeSweep by sweepTransition.animateFloat(
                 initialValue = 0f,
                 targetValue = 1f,
@@ -570,16 +571,16 @@ internal fun AppleMusicTimesRow(
                         animation = tween(3200, easing = LinearEasing),
                         repeatMode = RepeatMode.Restart,
                     ),
-                label = "appleMusicSweepHead",
+                label = "immersiveSweepHead",
             )
             val quality = state.audioQualityLabel
             val crossfadeLabelAlpha by animateFloatAsState(
                 targetValue = if (state.timelineState.isCrossfading) 1f else 0f,
-                label = "appleMusicCrossfadeLabelAlpha",
+                label = "immersiveCrossfadeLabelAlpha",
             )
             val qualityLabelAlpha by animateFloatAsState(
                 targetValue = if (!state.timelineState.isCrossfading && quality != null) 1f else 0f,
-                label = "appleMusicQualityLabelAlpha",
+                label = "immersiveQualityLabelAlpha",
             )
             Box(modifier = Modifier.alpha(crossfadeLabelAlpha)) {
                 // Identical treatment to Classic and M3 Expressive: a highlight swept through the
@@ -612,14 +613,14 @@ internal fun AppleMusicTimesRow(
             Crossfade(
                 targetState = quality,
                 animationSpec = tween(300),
-                label = "appleMusicQualityLabel",
+                label = "immersiveQualityLabel",
                 modifier = Modifier.alpha(qualityLabelAlpha),
             ) { label ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = LimusicIcons.Headphones,
                         contentDescription = null,
-                        tint = AppleMusicQualityLabel,
+                        tint = ImmersiveQualityLabel,
                         modifier = Modifier.size(13.dp),
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -628,7 +629,7 @@ internal fun AppleMusicTimesRow(
                     // its height.
                     Text(
                         text = label.orEmpty(),
-                        style = typography.times.copy(color = AppleMusicQualityLabel),
+                        style = typography.times.copy(color = ImmersiveQualityLabel),
                         maxLines = 1,
                     )
                 }
@@ -638,11 +639,11 @@ internal fun AppleMusicTimesRow(
 }
 
 // The quality line sits a step below the times either side of it.
-private val AppleMusicQualityLabel = Color.White.copy(alpha = 0.45f)
+private val ImmersiveQualityLabel = Color.White.copy(alpha = 0.45f)
 
 /** FastRewind(44dp) → Previous, Play/Pause(62dp, plain white — no container disc), FastForward(44dp) → Next. */
 @Composable
-internal fun AppleMusicTransportRow(
+internal fun ImmersiveTransportRow(
     controllerState: ControlState,
     onUIEvent: (UIEvent) -> Unit,
     modifier: Modifier = Modifier,
@@ -653,8 +654,7 @@ internal fun AppleMusicTransportRow(
         modifier = modifier.fillMaxWidth(),
         // Mock: a tight centered cluster with a 58dp gap — NOT SpaceEvenly, which spreads the
         // rewind/forward glyphs to the screen edges (first device screenshots). With shuffle and
-        // repeat on the two ends the five span the row instead, the way Apple's desktop player
-        // lays them out — five buttons at a 58dp gap no longer fit beside the artwork.
+        // repeat on the two ends the five span the row instead: five buttons at a 58dp gap no longer fit beside the artwork.
         horizontalArrangement =
             if (showShuffleAndRepeat) {
                 Arrangement.SpaceBetween
@@ -664,7 +664,7 @@ internal fun AppleMusicTransportRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showShuffleAndRepeat) {
-            AppleMusicGlyphButton(
+            ImmersiveGlyphButton(
                 icon = LimusicIcons.Shuffle,
                 onClick = { onUIEvent(UIEvent.Shuffle) },
                 size = 40.dp,
@@ -673,7 +673,7 @@ internal fun AppleMusicTransportRow(
         }
         IconButton(
             onClick = { if (controllerState.isPreviousAvailable) onUIEvent(UIEvent.Previous) },
-            modifier = Modifier.appleMusicPressInflate().size(56.dp).clip(CircleShape),
+            modifier = Modifier.immersivePressInflate().size(56.dp).clip(CircleShape),
         ) {
             Icon(
                 imageVector = LimusicIcons.FastRewind,
@@ -688,13 +688,13 @@ internal fun AppleMusicTransportRow(
         Box(
             modifier =
                 Modifier
-                    .appleMusicPressInflate()
+                    .immersivePressInflate()
                     .size(76.dp)
                     .clip(CircleShape)
                     .clickable { onUIEvent(UIEvent.PlayPause) },
             contentAlignment = Alignment.Center,
         ) {
-            Crossfade(targetState = controllerState.isPlaying, label = "appleMusicPlayPauseIcon") { isPlaying ->
+            Crossfade(targetState = controllerState.isPlaying, label = "immersivePlayPauseIcon") { isPlaying ->
                 Icon(
                     imageVector = if (isPlaying) LimusicIcons.Pause else LimusicIcons.PlayArrow,
                     contentDescription = "",
@@ -705,7 +705,7 @@ internal fun AppleMusicTransportRow(
         }
         IconButton(
             onClick = { if (controllerState.isNextAvailable) onUIEvent(UIEvent.Next) },
-            modifier = Modifier.appleMusicPressInflate().size(56.dp).clip(CircleShape),
+            modifier = Modifier.immersivePressInflate().size(56.dp).clip(CircleShape),
         ) {
             Icon(
                 imageVector = LimusicIcons.FastForward,
@@ -716,7 +716,7 @@ internal fun AppleMusicTransportRow(
         }
         if (showShuffleAndRepeat) {
             val repeatState = controllerState.repeatState
-            AppleMusicGlyphButton(
+            ImmersiveGlyphButton(
                 icon = if (repeatState is RepeatState.One) LimusicIcons.RepeatOne else LimusicIcons.Repeat,
                 onClick = { onUIEvent(UIEvent.Repeat) },
                 size = 40.dp,
@@ -727,7 +727,7 @@ internal fun AppleMusicTransportRow(
 }
 
 @Composable
-internal fun AppleMusicVolumeRow(
+internal fun ImmersiveVolumeRow(
     controller: DeviceVolumeController,
     modifier: Modifier = Modifier,
 ) {
@@ -735,14 +735,14 @@ internal fun AppleMusicVolumeRow(
         Icon(
             imageVector = LimusicIcons.VolumeDown,
             contentDescription = "",
-            tint = AppleMusicTextSecondary,
+            tint = ImmersiveTextSecondary,
             modifier = Modifier.size(18.dp),
         )
         Spacer(modifier = Modifier.width(12.dp))
         Box(modifier = Modifier.weight(1f).height(18.dp), contentAlignment = Alignment.Center) {
-            AppleMusicThinSlider(
+            ImmersiveThinSlider(
                 value = controller.volumeFraction,
-                activeColor = AppleMusicTrackActive,
+                activeColor = ImmersiveTrackActive,
                 onValueChange = { controller.setVolumeFraction(it) },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -751,7 +751,7 @@ internal fun AppleMusicVolumeRow(
         Icon(
             imageVector = LimusicIcons.VolumeUp,
             contentDescription = "",
-            tint = AppleMusicTextSecondary,
+            tint = ImmersiveTextSecondary,
             modifier = Modifier.size(18.dp),
         )
     }
@@ -759,7 +759,7 @@ internal fun AppleMusicVolumeRow(
 
 /** One 44dp dock button: a light circle behind a DARK glyph while [active] (white-on-light was unreadable). */
 @Composable
-internal fun AppleMusicDockButton(
+internal fun ImmersiveDockButton(
     icon: ImageVector,
     active: Boolean,
     activeColor: Color,
@@ -771,7 +771,7 @@ internal fun AppleMusicDockButton(
     Box(
         modifier =
             modifier
-                .appleMusicPressInflate()
+                .immersivePressInflate()
                 .size(40.dp)
                 .clip(CircleShape)
                 .background(if (active) activeColor else Color.Transparent)
@@ -799,9 +799,9 @@ internal fun AppleMusicDockButton(
  * two read as one object.
  */
 @Composable
-internal fun AppleMusicActionRow(
-    viewState: AppleMusicView,
-    onSelectView: (AppleMusicView) -> Unit,
+internal fun ImmersiveActionRow(
+    viewState: ImmersiveView,
+    onSelectView: (ImmersiveView) -> Unit,
     lyricsAvailable: Boolean,
     activeColor: Color,
     activeContentColor: Color,
@@ -824,14 +824,14 @@ internal fun AppleMusicActionRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Re-tapping the active tab returns to MAIN — the dock is a toggle, not one-way nav.
-            AppleMusicDockButton(
+            ImmersiveDockButton(
                 icon = LimusicIcons.Lyrics,
-                active = viewState == AppleMusicView.LYRICS,
+                active = viewState == ImmersiveView.LYRICS,
                 activeColor = activeColor,
                 activeContentColor = activeContentColor,
                 enabled = lyricsAvailable,
                 onClick = {
-                    onSelectView(if (viewState == AppleMusicView.LYRICS) AppleMusicView.MAIN else AppleMusicView.LYRICS)
+                    onSelectView(if (viewState == ImmersiveView.LYRICS) ImmersiveView.MAIN else ImmersiveView.LYRICS)
                 },
             )
             Row(
@@ -842,7 +842,7 @@ internal fun AppleMusicActionRow(
                         .background(Color.White.copy(alpha = 0.12f)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AppleMusicCapsuleSegment(
+                ImmersiveCapsuleSegment(
                     icon = LimusicIcons.Headphones,
                     // Headphones is a tall, narrow glyph and Groups a wide one; these are the sizes at
                     // which the two read as a matched pair rather than one looking bigger.
@@ -857,20 +857,20 @@ internal fun AppleMusicActionRow(
                             .fillMaxHeight()
                             .background(Color.White.copy(alpha = 0.20f)),
                 )
-                AppleMusicCapsuleSegment(
+                ImmersiveCapsuleSegment(
                     icon = LimusicIcons.Groups,
                     iconSize = 24.dp,
                     highlighted = room.inRoom,
                     onClick = onOpenListenTogether,
                 )
             }
-            AppleMusicDockButton(
+            ImmersiveDockButton(
                 icon = LimusicIcons.QueueMusic,
-                active = viewState == AppleMusicView.QUEUE,
+                active = viewState == ImmersiveView.QUEUE,
                 activeColor = activeColor,
                 activeContentColor = activeContentColor,
                 onClick = {
-                    onSelectView(if (viewState == AppleMusicView.QUEUE) AppleMusicView.MAIN else AppleMusicView.QUEUE)
+                    onSelectView(if (viewState == ImmersiveView.QUEUE) ImmersiveView.MAIN else ImmersiveView.QUEUE)
                 },
             )
         }
@@ -884,7 +884,7 @@ internal fun AppleMusicActionRow(
  * the capsule's rounded ends.
  */
 @Composable
-private fun AppleMusicCapsuleSegment(
+private fun ImmersiveCapsuleSegment(
     icon: ImageVector,
     iconSize: Dp,
     highlighted: Boolean,
@@ -895,12 +895,12 @@ private fun AppleMusicCapsuleSegment(
     val glyphScale by animateFloatAsState(
         targetValue = if (pressed) 1.25f else 1f,
         animationSpec = spring(dampingRatio = 0.45f, stiffness = 380f),
-        label = "appleMusicCapsuleGlyph",
+        label = "immersiveCapsuleGlyph",
     )
     val background by animateColorAsState(
         targetValue = if (highlighted) Color.White.copy(alpha = 0.14f) else Color.Transparent,
         animationSpec = tween(220),
-        label = "appleMusicCapsuleHighlight",
+        label = "immersiveCapsuleHighlight",
     )
     Box(
         modifier =
@@ -929,32 +929,32 @@ private val DOCK_BUTTON_SIZE = 40.dp
 private val CAPSULE_SEGMENT_WIDTH = 64.dp
 
 /**
- * Progress bar + times + transport — the playback half of [AppleMusicBottomCluster]. Emits
+ * Progress bar + times + transport — the playback half of [ImmersiveBottomCluster]. Emits
  * straight into the caller's Column; the horizontal
  * gutter belongs to that Column, as it does in the cluster.
  */
 @Composable
-internal fun ColumnScope.AppleMusicPlaybackControls(
+internal fun ColumnScope.ImmersivePlaybackControls(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
     showShuffleAndRepeat: Boolean = false,
 ) {
     // Fixed 18dp shell: the track swells on touch, but inside a CONSTANT footprint —
     // otherwise the growing slider re-measures this whole column and the artwork above
     // it visibly jumps. It also gives the bar a real 18dp touch target instead of 8.4dp.
     Box(modifier = Modifier.fillMaxWidth().height(18.dp), contentAlignment = Alignment.Center) {
-        AppleMusicThinSlider(
+        ImmersiveThinSlider(
             value = state.sliderValue / 100f,
-            activeColor = if (state.timelineState.isCrossfading) state.sliderTrackColor else AppleMusicTrackActive,
+            activeColor = if (state.timelineState.isCrossfading) state.sliderTrackColor else ImmersiveTrackActive,
             onValueChange = { actions.onSliderChange(it * 100f) },
             onValueChangeFinished = actions.onSliderChangeFinished,
             modifier = Modifier.fillMaxWidth(),
         )
     }
-    AppleMusicTimesRow(state = state, typography = typography, modifier = Modifier.padding(top = 8.dp))
+    ImmersiveTimesRow(state = state, typography = typography, modifier = Modifier.padding(top = 8.dp))
     Spacer(modifier = Modifier.height(if (state.isShort) 14.dp else 22.dp))
-    AppleMusicTransportRow(
+    ImmersiveTransportRow(
         controllerState = state.controllerState,
         onUIEvent = actions.onUIEvent,
         showShuffleAndRepeat = showShuffleAndRepeat,
@@ -963,7 +963,7 @@ internal fun ColumnScope.AppleMusicPlaybackControls(
 
 /**
  * Progress bar + times + transport + volume + action row + output caption — the fixed block every
- * Apple Music body (MAIN, LYRICS, QUEUE) renders at the bottom, identically. On Desktop only the
+ * Immersive body (MAIN, LYRICS, QUEUE) renders at the bottom, identically. On Desktop only the
  * action row renders (no slider/transport/volume), matching the `Platform.Android` gate the other
  * two styles use.
  *
@@ -971,12 +971,12 @@ internal fun ColumnScope.AppleMusicPlaybackControls(
  * Cast receiver); the slot keeps its height while it is unknown, so nothing above it moves.
  */
 @Composable
-internal fun AppleMusicBottomCluster(
+internal fun ImmersiveBottomCluster(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
-    viewState: AppleMusicView,
-    onSelectView: (AppleMusicView) -> Unit,
+    typography: ImmersiveTypography,
+    viewState: ImmersiveView,
+    onSelectView: (ImmersiveView) -> Unit,
     activePillContainer: Color,
     activePillContent: Color,
     deviceVolumeController: DeviceVolumeController?,
@@ -990,20 +990,20 @@ internal fun AppleMusicBottomCluster(
         if (getPlatform() == Platform.Android) {
             // On a short window (#13) Queue keeps only the dock: with the transport as well its list
             // had no room at all. The cover's page, and its transport, is one tap away on the dock.
-            if (!(state.isShort && viewState == AppleMusicView.QUEUE)) {
-                AppleMusicPlaybackControls(state = state, actions = actions, typography = typography)
+            if (!(state.isShort && viewState == ImmersiveView.QUEUE)) {
+                ImmersivePlaybackControls(state = state, actions = actions, typography = typography)
                 Spacer(modifier = Modifier.height(if (state.isShort) 12.dp else 18.dp))
             }
             // A short window (#13) leaves the volume to the phone's buttons, and the output's name
             // under the dock to the output sheet.
             deviceVolumeController?.takeUnless { state.isShort }?.let { controller ->
-                AppleMusicVolumeRow(controller = controller)
+                ImmersiveVolumeRow(controller = controller)
                 Spacer(modifier = Modifier.height(24.dp))
             }
         } else {
             Spacer(modifier = Modifier.height(16.dp))
         }
-        AppleMusicActionRow(
+        ImmersiveActionRow(
             viewState = viewState,
             onSelectView = onSelectView,
             lyricsAvailable = state.screenData.lyricsData != null,
@@ -1019,7 +1019,7 @@ internal fun AppleMusicBottomCluster(
             Crossfade(
                 targetState = outputName.orEmpty(),
                 animationSpec = tween(300),
-                label = "appleMusicOutputCaption",
+                label = "immersiveOutputCaption",
                 modifier = Modifier.fillMaxWidth(),
             ) { name ->
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

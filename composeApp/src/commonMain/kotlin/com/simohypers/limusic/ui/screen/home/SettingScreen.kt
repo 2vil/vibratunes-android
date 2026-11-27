@@ -99,7 +99,6 @@ import com.simohypers.limusic.domain.repository.ImportProgress
 import com.simohypers.limusic.Platform
 import com.simohypers.limusic.expect.ui.filePickerResult
 import com.simohypers.limusic.expect.ui.fileSaverResult
-import com.simohypers.limusic.expect.ui.isLyricsBlurSupported
 import com.simohypers.limusic.expect.ui.openEqResult
 import com.simohypers.limusic.extension.barBlurStyle
 import com.simohypers.limusic.extension.bytesToMB
@@ -285,9 +284,6 @@ import limusic.composeapp.generated.resources.lyrics_romanization
 import limusic.composeapp.generated.resources.lyrics_romanization_description
 import limusic.composeapp.generated.resources.lyrics_sources
 import limusic.composeapp.generated.resources.lyrics_sources_none
-import limusic.composeapp.generated.resources.lyrics_style
-import limusic.composeapp.generated.resources.lyrics_style_apple_music
-import limusic.composeapp.generated.resources.lyrics_style_classic
 import limusic.composeapp.generated.resources.sign_in
 import limusic.composeapp.generated.resources.sign_in_hint
 import limusic.composeapp.generated.resources.developer_name
@@ -320,7 +316,6 @@ import limusic.composeapp.generated.resources.proxy_username_message
 import limusic.composeapp.generated.resources.quality
 import limusic.composeapp.generated.resources.radio_audio_only
 import limusic.composeapp.generated.resources.radio_audio_only_description
-import limusic.composeapp.generated.resources.requires_android_12
 import limusic.composeapp.generated.resources.restore_your_data
 import limusic.composeapp.generated.resources.restore_your_saved_data
 import limusic.composeapp.generated.resources.romanization_belarusian
@@ -516,7 +511,6 @@ fun SettingScreen(
     val autoBackupMaxFiles by viewModel.autoBackupMaxFiles.collectAsStateWithLifecycle()
     val autoBackupLastTime by viewModel.autoBackupLastTime.collectAsStateWithLifecycle()
     val nowPlayingStyle by sharedViewModel.getNowPlayingStyle().collectAsStateWithLifecycle(DataStoreManager.NOW_PLAYING_STYLE_SPOTIFY)
-    val lyricsStyle by sharedViewModel.getLyricsStyle().collectAsStateWithLifecycle(DataStoreManager.LYRICS_STYLE_CLASSIC)
     val romanizationStored by sharedViewModel.getRomanizationLanguages().collectAsStateWithLifecycle("")
     val japaneseDictionaryState by viewModel.japaneseDictionaryState.collectAsStateWithLifecycle()
     val discordLoggedIn by viewModel.discordLoggedIn.collectAsStateWithLifecycle()
@@ -943,7 +937,7 @@ fun SettingScreen(
                         }
                     }
                     SettingsSection.APPEARANCE -> {
-                        AppearanceSettings(sharedViewModel)
+                        AppearanceSettings(sharedViewModel, navController)
                         SettingGroup(title = stringResource(Res.string.appearance_player)) {
                             PlayerStylePicker(nowPlayingStyle, onStyle = sharedViewModel::setNowPlayingStyle)
                             SettingItem(
@@ -961,7 +955,7 @@ fun SettingScreen(
                                 subtitle = stringResource(Res.string.open_player_on_play_info),
                                 switch = (openPlayerOnPlay to { sharedViewModel.setOpenPlayerOnPlay(it) }),
                             )
-                            // Shown in the Apple Music and Material 3 Expressive styles, and on artist pages.
+                            // Shown in the Immersive and Material 3 Expressive styles, and on artist pages.
                             SettingItem(
                                 title = stringResource(Res.string.enable_animated_artwork),
                                 subtitle = stringResource(Res.string.animated_artwork_info),
@@ -1276,47 +1270,6 @@ fun SettingScreen(
                                 navigates = true,
                                 onClick = { navController.navigate(LyricsSourcesDestination) },
                             )
-                            val requiresAndroid12 = " (" + stringResource(Res.string.requires_android_12) + ")"
-                            // Hidden outright below Android 12 rather than offered with one option: the Apple
-                            // Music treatment IS the blur, and Modifier.blur is a documented no-op there, so
-                            // the choice would be between Classic and a broken-looking Classic.
-                            if (isLyricsBlurSupported()) {
-                                val lyricsStyleLabels =
-                                    listOf(
-                                        DataStoreManager.LYRICS_STYLE_CLASSIC to stringResource(Res.string.lyrics_style_classic),
-                                        DataStoreManager.LYRICS_STYLE_APPLE_MUSIC to
-                                            stringResource(Res.string.lyrics_style_apple_music) + requiresAndroid12,
-                                    )
-                                SettingItem(
-                                    title = stringResource(Res.string.lyrics_style),
-                                    navigates = true,
-                                    value = lyricsStyleLabels.firstOrNull { it.first == lyricsStyle }?.second ?: "",
-                                    onClick = {
-                                        viewModel.setAlertData(
-                                            SettingAlertState(
-                                                title = runBlocking { getString(Res.string.lyrics_style) },
-                                                selectOne =
-                                                    SettingAlertState.SelectData(
-                                                        listSelect = lyricsStyleLabels.map { (it.first == lyricsStyle) to it.second },
-                                                    ),
-                                                confirm =
-                                                    runBlocking { getString(Res.string.change) } to { state ->
-                                                        val selected = state.selectOne?.getSelected()
-                                                        lyricsStyleLabels.firstOrNull { it.second == selected }?.first?.let {
-                                                            sharedViewModel.setLyricsStyle(it)
-                                                        }
-                                                    },
-                                                dismiss = runBlocking { getString(Res.string.cancel) },
-                                            ),
-                                        )
-                                    },
-                                )
-                            }
-
-                            // Independent of BOTH style settings, and not gated on Android 12: this changes
-                            // what the words SAY, not how they are drawn, so it applies to every style on
-                            // every version. Sits next to them because a user looking for "something about
-                            // lyrics" looks in one place.
                             val romanizationLabels =
                                 listOf(
                                     RomanizationLanguage.JAPANESE to stringResource(Res.string.romanization_japanese),

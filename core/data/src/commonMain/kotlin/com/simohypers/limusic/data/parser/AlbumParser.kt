@@ -1,5 +1,6 @@
 package com.simohypers.limusic.data.parser
 
+import com.simohypers.limusic.data.mapping.toTrack
 import com.simohypers.limusic.domain.data.model.browse.album.AlbumBrowse
 import com.simohypers.limusic.domain.data.model.browse.album.Track
 import com.simohypers.limusic.domain.data.model.browse.artist.ResultAlbum
@@ -48,6 +49,8 @@ internal fun parseAlbumData(data: AlbumPage): AlbumBrowse {
                 title = songItem.title,
                 videoId = songItem.id,
                 videoType = songItem.musicVideoType,
+                // The music video a row was swapped away from (YouTube.album), for the Song/Video switch.
+                counterpart = songItem.counterpart?.toTrack(),
                 category = null,
                 feedbackTokens = null,
                 resultType = null,

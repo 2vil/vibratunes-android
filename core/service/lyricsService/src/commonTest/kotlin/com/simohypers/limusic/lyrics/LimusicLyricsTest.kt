@@ -30,14 +30,14 @@ class LimusicLyricsTest {
 
     @Test
     fun answerKeepsSingersAndBackgroundVocalsApart() {
-        val l = LimusicLyrics.answerToLyric(answer)!!
+        val l = LimusicLyrics.answerToLyric(answer, "aaaaaaaaaaa")!!
         assertEquals("community", l.origin)
         assertEquals(7L, l.revision)
         assertEquals(listOf("carla", "moss_fern", "a", "b", "c"), l.authors, "five at most, no blanks")
         val lines = l.lyrics.lyrics!!.lines!!
         assertEquals("RICH_SYNCED", l.lyrics.lyrics!!.syncType)
-        assertEquals("<00:01.000>Paper <00:01.500>lanterns", lines[0].words)
-        assertEquals("<00:02.100>(lanterns)", lines[0].background)
+        assertEquals("<00:01.000>Paper <00:01.500>lanterns<00:02.000>", lines[0].words, "a word that ends before the next starts carries its end")
+        assertEquals("<00:02.100>(lanterns)<00:02.600>", lines[0].background)
         assertEquals("v1", lines[0].agent)
         assertEquals("" to null, lines[1].words to lines[1].background, "a break stays a timed empty line")
         assertEquals("v2", lines[2].agent)
@@ -45,9 +45,16 @@ class LimusicLyricsTest {
     }
 
     @Test
+    fun answerNamesWhereTheLyricIsFiled() {
+        assertEquals("aaaaaaaaaaa", LimusicLyrics.answerToLyric(answer, "bbbbbbbbbbb")!!.filedId, "another upload's lyric")
+        val unnamed = answer.replace("\"video_id\":\"aaaaaaaaaaa\",", "")
+        assertEquals("bbbbbbbbbbb", LimusicLyrics.answerToLyric(unnamed, "bbbbbbbbbbb")!!.filedId, "an older server's answer is the id asked")
+    }
+
+    @Test
     fun nothingToShowIsGone() {
-        assertNull(LimusicLyrics.answerToLyric("""{"origin":"unison","revision":1,"lines":[]}"""))
-        assertNull(LimusicLyrics.answerToLyric("not json"))
+        assertNull(LimusicLyrics.answerToLyric("""{"origin":"unison","revision":1,"lines":[]}""", "aaaaaaaaaaa"))
+        assertNull(LimusicLyrics.answerToLyric("not json", "aaaaaaaaaaa"))
     }
 
     @Test

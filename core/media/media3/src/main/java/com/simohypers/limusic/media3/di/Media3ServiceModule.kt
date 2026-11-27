@@ -205,6 +205,7 @@ private val mediaServiceModule =
                 mediaSourceFactory = get(),
                 audioAttributes = get(),
                 streamRepository = get(),
+                downloadCache = get<SimpleCache>(named(DOWNLOAD_CACHE)),
             )
         }
 
@@ -253,6 +254,7 @@ private fun provideResolvingDataSourceFactory(
     coroutineScope: CoroutineScope,
 ): DataSource.Factory {
     val chunkLength = 10 * 512 * 1024L
+
     return ResolvingDataSource.Factory(cacheDataSourceFactory) { dataSpec ->
         val mediaId = dataSpec.key ?: error("No media id")
         val videoId = mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO)
@@ -261,38 +263,13 @@ private fun provideResolvingDataSourceFactory(
         if (LiveStreamRegistry.isLive(videoId)) throw LiveStreamDetectedException(videoId)
         Logger.d("Stream", mediaId)
         Logger.d("Stream", mediaId.startsWith(MERGING_DATA_TYPE.VIDEO).toString())
+        // A play off the disk gets its watch-history ping from StreamRepository.takePlaybackPing.
         if (downloadCache.isFullyCached(mediaId, dataSpec.position)) {
-            // Only on the first chunk: the subrange below makes the resolver run once per
-            // chunk, and updateFormat is a fire-and-forget youTube.player() call with no
-            // in-flight dedup, so leaving it ungated would fan out one request per 5 MiB.
-            if (dataSpec.position == 0L) {
-                Logger.i("Stream", "$mediaId: audio from the download")
-                coroutineScope.launch(Dispatchers.IO) {
-                    streamRepository.updateFormat(
-                        if (mediaId.contains(MERGING_DATA_TYPE.VIDEO)) {
-                            mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO)
-                        } else {
-                            mediaId
-                        },
-                    )
-                }
-            }
+            if (dataSpec.position == 0L) Logger.i("Stream", "$mediaId: audio from the download")
             return@Factory dataSpec.subrange(dataSpec.uriPositionOffset, chunkLength)
         }
         if (playerCache.isFullyCached(mediaId, dataSpec.position)) {
-            // See the note above: once per track, not once per chunk.
-            if (dataSpec.position == 0L) {
-                Logger.i("Stream", "$mediaId: audio from the cache")
-                coroutineScope.launch(Dispatchers.IO) {
-                    streamRepository.updateFormat(
-                        if (mediaId.contains(MERGING_DATA_TYPE.VIDEO)) {
-                            mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO)
-                        } else {
-                            mediaId
-                        },
-                    )
-                }
-            }
+            if (dataSpec.position == 0L) Logger.i("Stream", "$mediaId: audio from the cache")
             // Every byte is on disk right now, so CacheDataSource can serve this chunk
             // without ever reaching upstream, and the bare media id is safe as the URI.
             //

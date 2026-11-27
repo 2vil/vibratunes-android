@@ -6,6 +6,9 @@ import com.simohypers.limusic.domain.data.model.browse.artist.sameArtistName
 import com.simohypers.limusic.data.db.datasource.LocalDataSource
 import com.simohypers.limusic.data.mapping.toLyrics
 import com.simohypers.limusic.domain.data.entities.LyricsEntity
+import com.simohypers.limusic.domain.data.model.browse.album.Track
+import com.simohypers.limusic.domain.data.model.lyrics.keptOnVideo
+import com.simohypers.limusic.domain.data.model.lyrics.ontoVideo
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicException
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicRating
 import com.simohypers.limusic.domain.data.model.lyrics.LyricsRecheck
@@ -92,13 +95,18 @@ internal class LyricsCanvasRepositoryImpl(
         album: String?,
         durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track?,
     ): LyricsEntity? =
         withContext(Dispatchers.IO) {
             val now = Clock.System.now().epochSeconds
             val cached = localDataSource.getSavedLyrics(videoId)
-            if (cached != null && cached.fetchedAt > 0 && (!cached.error || now - cached.fetchedAt < LYRICS_MISS_TTL_SECS)) {
+            // A music video's row counts only when it is its own; one cached before its song was
+            // known is passed over.
+            val kept = song == null || cached?.keptOnVideo == true
+            if (kept && cached != null && cached.fetchedAt > 0 && (!cached.error || now - cached.fetchedAt < LYRICS_MISS_TTL_SECS)) {
                 return@withContext cached.takeUnless { it.error }
             }
+            if (song != null) return@withContext onVideo(videoId, song, title, artist, album, order, now)
             val query = LyricsQuery(videoId, title, artist, album, durationSeconds.takeIf { it > 0 })
             val sources = order.filter { it.second }.map { it.first }
             // Synced beats plain: the first synced answer down the list wins, and only when none is
@@ -164,25 +172,49 @@ internal class LyricsCanvasRepositoryImpl(
         album: String?,
         durationSeconds: Int,
         searched: Boolean,
+        song: Track?,
     ): LyricsEntity? =
         withContext(Dispatchers.IO) {
-            askLyricsSource(source, LyricsQuery(videoId, title, artist, album, durationSeconds.takeIf { it > 0 }, searched), Clock.System.now().epochSeconds)
+            val now = Clock.System.now().epochSeconds
+            suspend fun ask(
+                id: String,
+                seconds: Int?,
+            ) = askLyricsSource(source, LyricsQuery(id, title, artist, album, seconds?.takeIf { it > 0 }, searched), now)
+            if (song == null || searched) return@withContext ask(videoId, durationSeconds)
+            // What getLyrics shows from this source, or the video's own when the song has none.
+            if (source == LyricsSource.LIMUSIC) videoOwn(videoId, now)?.let { return@withContext it }
+            ask(song.videoId, song.durationSeconds)?.ontoVideo(videoId, song.twinSegments) ?: ask(videoId, durationSeconds)
         }
 
     override suspend fun recheckLyrics(
         videoId: String,
+        title: String,
+        artist: String,
+        durationSeconds: Int,
         order: List<Pair<LyricsSource, Boolean>>,
+        song: Track?,
     ): Boolean =
         withContext(Dispatchers.IO) {
+            // A music video shows its song's row unless it keeps one of its own.
+            if (song != null && localDataSource.getSavedLyrics(videoId)?.keptOnVideo != true) {
+                return@withContext recheckLyrics(song.videoId, title, artist, song.durationSeconds ?: 0, order, null)
+            }
             val now = Clock.System.now().epochSeconds
             val cached = localDataSource.getSavedLyrics(videoId) ?: return@withContext false
             val kind = LyricsRecheck.due(cached, now - cached.fetchedAt, order) ?: return@withContext false
             // Stamped before the request leaves, not when it answers: a second look at the song
             // meanwhile finds nothing due, and it makes this one request per song per day at most.
             localDataSource.insertLyrics(cached.copy(fetchedAt = now))
+            // Limusic's own lyric is asked about where it is filed, which needs no name; anything else
+            // asks whether Limusic has the song now, under this id or another upload of it.
+            val filed = cached.limusicId?.takeIf { kind == LyricsRecheck.REVISION }
             val answer =
                 try {
-                    limusic.get(videoId, cached.revision.takeIf { kind == LyricsRecheck.REVISION })
+                    if (filed != null) {
+                        limusic.get(filed, cached.revision)
+                    } else {
+                        limusic.get(videoId, cached.revision.takeIf { kind == LyricsRecheck.REVISION }, title, artist, durationSeconds)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -213,8 +245,57 @@ internal class LyricsCanvasRepositoryImpl(
             }
         }
 
+    /**
+     * A music video paired with [song]: a Limusic lyric synced on the video itself, else the song's
+     * lyrics moved onto the video's timing. Limusic can't match the two by name (their lengths
+     * differ), and any other source's lines are the song's, early by the video's intro. Only the
+     * video's own lyric is kept under it: the song's is moved again every time, so it follows the
+     * song's cache, its daily check, picks and nudges.
+     */
+    private suspend fun onVideo(
+        videoId: String,
+        song: Track,
+        title: String,
+        artist: String,
+        album: String?,
+        order: List<Pair<LyricsSource, Boolean>>,
+        now: Long,
+    ): LyricsEntity? {
+        if (order.any { it.first == LyricsSource.LIMUSIC && it.second }) {
+            videoOwn(videoId, now)?.let {
+                localDataSource.insertLyrics(it)
+                return it
+            }
+        }
+        val moved =
+            getLyrics(song.videoId, title, artist, album, song.durationSeconds ?: 0, order, null)
+                ?.ontoVideo(videoId, song.twinSegments) ?: return null
+        // Without a segment map (YouTube pairs some only on the album page) the copy keeps the
+        // song's timing. It is cached under the video so a nudge there has a row of its own.
+        if (song.twinSegments.isEmpty()) localDataSource.insertLyrics(moved)
+        return moved
+    }
+
+    /**
+     * A Limusic lyric synced on this video itself, asked for by id alone: by name the service could
+     * answer with the song, which is timed to the song.
+     */
+    private suspend fun videoOwn(
+        videoId: String,
+        now: Long,
+    ): LyricsEntity? =
+        try {
+            (limusic.get(videoId) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(videoId, now)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.d(LYRICS_TAG, "limusic (video's own) failed: ${e.message}")
+            null
+        }
+
     override suspend fun limusicRating(videoId: String): LimusicRating? =
         withContext(Dispatchers.IO) {
+            val videoId = filedId(videoId)
             val token = limusicToken()
             try {
                 limusic.rating(videoId, token)
@@ -230,13 +311,16 @@ internal class LyricsCanvasRepositoryImpl(
         videoId: String,
         value: Int,
         before: LimusicRating,
-    ): LimusicRating = withContext(Dispatchers.IO) { asContributor { limusic.vote(videoId, value, it, before) } }
+    ): LimusicRating = withContext(Dispatchers.IO) { filedId(videoId).let { id -> asContributor { limusic.vote(id, value, it, before) } } }
 
     override suspend fun limusicReport(
         videoId: String,
         reason: String,
         note: String?,
-    ) = withContext(Dispatchers.IO) { asContributor { limusic.report(videoId, reason, note, it) } }
+    ) = withContext(Dispatchers.IO) { filedId(videoId).let { id -> asContributor { limusic.report(id, reason, note, it) } } }
+
+    /** Where Limusic files the cached lyric, desktop's `filed_id`: another upload of the song, or this one. */
+    private suspend fun filedId(videoId: String) = localDataSource.getSavedLyrics(videoId)?.limusicId ?: videoId
 
     private suspend fun limusicToken() = dataStoreManager.limusicLyricsToken.first().takeIf { it.isNotEmpty() }
 
@@ -304,6 +388,7 @@ internal class LyricsCanvasRepositoryImpl(
             revision = revision,
             origin = origin,
             authors = authors.ifEmpty { null },
+            limusicId = filedId,
         )
 
     override suspend fun forgetLyrics(videoId: String) = withContext(Dispatchers.IO) { localDataSource.deleteLyrics(videoId) }
@@ -317,7 +402,8 @@ internal class LyricsCanvasRepositoryImpl(
     ): LyricsEntity? = toLyrics()?.toLyricsEntity(videoId)?.copy(provider = source.id, fetchedAt = now)
 
     // YouTube Music needs the scraper, which the lyrics module doesn't have; the rest are there.
-    // Limusic goes by video id only, so a title typed in the source sheet skips it.
+    // Limusic goes by video id (and the song's name, for another upload), so a title typed in the
+    // source sheet skips it.
     private suspend fun askLyricsSource(
         source: LyricsSource,
         query: LyricsQuery,
@@ -327,7 +413,11 @@ internal class LyricsCanvasRepositoryImpl(
             LyricsSource.YOUTUBE ->
                 youTube.plainLyrics(query.videoId).getOrThrow()?.takeIf { it.isNotBlank() }?.let(::parseUnsyncedLyrics)?.toEntity(query.videoId, source, now)
             LyricsSource.LIMUSIC ->
-                if (query.searched) null else (limusic.get(query.videoId) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(query.videoId, now)
+                if (query.searched) {
+                    null
+                } else {
+                    (limusic.get(query.videoId, null, query.title, query.artist, query.durationSeconds) as? LimusicLyrics.Fresh.New)?.lyric?.toEntity(query.videoId, now)
+                }
             else -> lyricsProviders.ask(source.id, query)?.toEntity(query.videoId, source, now)
         }
 
@@ -365,6 +455,13 @@ internal class LyricsCanvasRepositoryImpl(
                 return@flow
             }
 
+            // A track AM had nothing for is asked again a week later, not on every play (issue #7).
+            val missedAt = song.canvasUrl?.takeIf { it.startsWith(AM_MISS) }?.removePrefix(AM_MISS)?.toLongOrNull()
+            if (missedAt != null && Clock.System.now().epochSeconds - missedAt < AM_MISS_TTL_SECONDS) {
+                emit(Resource.Error<CanvasResult>("No animated artwork"))
+                return@flow
+            }
+
             // The caller launches this outside the collector that triggered it, so a second
             // timeline emission for the same track — the duration changes once buffering finishes —
             // fires an identical second search while the first is still in the air. Claiming the id
@@ -380,6 +477,7 @@ internal class LyricsCanvasRepositoryImpl(
             val albumName = song.albumName?.takeIf { it.isNotBlank() && it != PLACEHOLDER_ALBUM_NAME }
             Logger.d(AM_ARTWORK_TAG, "resolving $videoId — album=$albumName title=${song.title} artist=$artist")
 
+            var searchFailed = false
             try {
                 // Tier 1 — the album name, which is what AM indexes one animated artwork against.
                 // Only an exact answer is taken: see pickAlbumMatch for why a near-miss is worse
@@ -388,7 +486,10 @@ internal class LyricsCanvasRepositoryImpl(
                     albumName?.let { name ->
                         appleMusic
                             .searchAMAlbum("$name $artist".cleanForSearch(), limit = AM_SEARCH_LIMIT)
-                            .onFailure { Logger.e(AM_ARTWORK_TAG, "album search failed: ${it.message}") }
+                            .onFailure {
+                                searchFailed = true
+                                Logger.e(AM_ARTWORK_TAG, "album search failed: ${it.message}")
+                            }
                             .getOrNull()
                             ?.pickAlbumMatch(name, artist)
                     }
@@ -400,7 +501,10 @@ internal class LyricsCanvasRepositoryImpl(
                 val album =
                     byAlbum ?: appleMusic
                         .searchAMSongsWithAlbums("${song.title} $artist".cleanForSearch(), limit = AM_SEARCH_LIMIT)
-                        .onFailure { Logger.e(AM_ARTWORK_TAG, "song search failed: ${it.message}") }
+                        .onFailure {
+                            searchFailed = true
+                            Logger.e(AM_ARTWORK_TAG, "song search failed: ${it.message}")
+                        }
                         .getOrNull()
                         ?.pickSongMatch(
                             title = song.title,
@@ -418,6 +522,10 @@ internal class LyricsCanvasRepositoryImpl(
                         ?.video
                 Logger.d(AM_ARTWORK_TAG, "Matched ${album?.attributes?.name} for $videoId --> $master")
                 if (master == null) {
+                    // Only a real answer is remembered, and never over a url an older build saved.
+                    if (!searchFailed && (song.canvasUrl == null || missedAt != null)) {
+                        localDataSource.updateCanvasUrl(videoId, AM_MISS + Clock.System.now().epochSeconds)
+                    }
                     emit(Resource.Error<CanvasResult>("No animated artwork"))
                     return@flow
                 }
@@ -573,6 +681,10 @@ private const val LYRICS_PROVIDER_BUDGET_MS = 10_000L
 
 private const val AM_ARTWORK_TAG = "AMArtwork"
 private const val AM_SEARCH_LIMIT = 5
+
+/** `song.canvasUrl` of a track AM has no animated artwork for: this, then the epoch second it was asked. */
+private const val AM_MISS = "am-miss:"
+private const val AM_MISS_TTL_SECONDS = 7 * 24 * 60 * 60L
 
 // Narrowest animated-artwork rendition considered sharp enough. On the measured ladders this lands
 // on 830x1106 for the tall cut and 768x768 for the square one, both H.264 at roughly 2-3 Mbps.

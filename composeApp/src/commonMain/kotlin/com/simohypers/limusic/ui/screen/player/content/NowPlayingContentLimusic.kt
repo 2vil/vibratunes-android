@@ -1,6 +1,6 @@
 package com.simohypers.limusic.ui.screen.player.content
 
-import com.simohypers.limusic.ui.screen.player.content.applemusic.CoverLyricLine
+import com.simohypers.limusic.ui.screen.player.content.immersive.CoverLyricLine
 import com.simohypers.limusic.ui.theme.rounded
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -21,6 +21,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import limusic.composeapp.generated.resources.share_lyrics
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.graphicsLayer
+import com.simohypers.limusic.ui.theme.LocalArtworkColors
+import com.simohypers.limusic.ui.theme.LocalIsDarkTheme
+import com.simohypers.limusic.ui.theme.rememberThemeScheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -119,7 +129,7 @@ import com.simohypers.limusic.ui.component.doubleTapToLike
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.SkipNext
 import com.simohypers.limusic.ui.icon.SkipPrevious
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AudioOutputSheetHost
+import com.simohypers.limusic.ui.screen.player.content.immersive.AudioOutputSheetHost
 import com.simohypers.limusic.ui.screen.player.content.expressive.WavySeekBar
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.UIEvent
@@ -150,7 +160,7 @@ private val COVER_GAP = 12.dp
  * The Classic full player, the default: a large cover with the current lyric line under it, title
  * and artist with like, the wavy seek bar, a row of rounded transport buttons, and a
  * row of squares at the bottom (Queue, Lyrics and the rest), the audio output top right. Queue and Lyrics are views of the same
- * page, like the Apple Music style's: they take the cover's place and the controls stay put.
+ * page, like the Immersive style's: they take the cover's place and the controls stay put.
  * Colours are the app's own (the cover's with Adapt colors to artwork on), over the cover itself,
  * frosted.
  */
@@ -159,12 +169,31 @@ fun NowPlayingContentLimusic(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
 ) {
-    ClassicLayout(state, actions)
+    ClassicTheme(state) { ClassicLayout(state, actions) }
+}
+
+/**
+ * With "Adapt colors to artwork" on, the app's scheme rebuilt from the pager's covers, blended as
+ * they slide: the player recolours with the cover on a swipe or a skip, not after the app has read
+ * the new song's cover. Off, or for a cover with no colour, the app's own scheme.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ClassicTheme(
+    state: NowPlayingContentState,
+    content: @Composable () -> Unit,
+) {
+    val appearance by koinInject<SharedViewModel>().appearance.collectAsStateWithLifecycle()
+    val color = if (LocalArtworkColors.current) rememberPagerCoverColor(state) else null
+    val scheme = if (color != null) rememberThemeScheme(appearance, LocalIsDarkTheme.current, color) else MaterialTheme.colorScheme
+    MaterialExpressiveTheme(colorScheme = scheme, typography = typo(scheme)) {
+        CompositionLocalProvider(LocalContentColor provides scheme.onSurfaceVariant, content = content)
+    }
 }
 
 /**
  * Classic's Lyrics view as a page of its own: what M3 Expressive opens for fullscreen lyrics
- * (Apple Music has its own lyrics view). The seek bar and pills come with it, the row of squares doesn't; [onClose] closes it.
+ * (Immersive has its own lyrics view). The seek bar and pills come with it, the row of squares doesn't; [onClose] closes it.
  */
 @Composable
 internal fun ClassicLyricsPage(
@@ -220,7 +249,7 @@ private fun ClassicLayout(
     Box(Modifier.fillMaxSize().background(background)) {
         // Modifier.blur does nothing before Android 12; the cover-coloured gradient stands in there.
         if (isLyricsBlurSupported()) {
-            FrostedCover(state.screenData.thumbnailURL, wash = background)
+            PagerFrostedCover(state, wash = background)
         } else {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to state.startColor.value.copy(alpha = 0.55f), 0.75f to background)))
         }
@@ -398,11 +427,18 @@ private fun QueueView(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
 ) {
+    var reordering by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         // Lined up with the player's own top row, so the chevron stays put across views.
-        QueueTopBar(onClose = actions.onDismiss, modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 8.dp))
+        QueueTopBar(
+            onClose = actions.onDismiss,
+            reordering = reordering,
+            onReorderingChange = { reordering = it },
+            modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 8.dp),
+        )
         QueueActions()
-        QueueList(onMore = actions.onQueueItemMore, bottomInset = 0.dp, modifier = Modifier.weight(1f)) {
+        // Over the player's frosted cover, or its cover-coloured gradient before Android 12.
+        QueueList(onMore = actions.onQueueItemMore, bottomInset = 0.dp, overCover = true, reordering = reordering, modifier = Modifier.weight(1f)) {
             NowPlayingSongHeader(state, actions)
         }
         Spacer(Modifier.height(8.dp))
@@ -479,6 +515,28 @@ private fun NowPlayingSongHeader(
 }
 
 /**
+ * [FrostedCover] for the player: the covers of the pager page it is on and of the page sliding in,
+ * the second over the first as far as the pager has slid, so the page changes with the cover on a
+ * swipe or a skip. Each cover keeps its layer as the pager moves on, so none reloads mid-slide.
+ */
+@Composable
+private fun PagerFrostedCover(
+    state: NowPlayingContentState,
+    wash: Color,
+) {
+    val pager = state.artworkPagerState
+    val below by remember(pager) { derivedStateOf { pager.pageBelow() } }
+    for (page in listOf(below, below + 1)) {
+        key(page) {
+            // A queue without covers (nothing to page through) still has the song playing.
+            val url = state.pageCover(page) ?: state.screenData.thumbnailURL.takeIf { page == state.currentOrderIndex }
+            FrostLayer(url, Modifier.graphicsLayer { alpha = if (page == below) 1f else pager.slidPast(below) })
+        }
+    }
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to wash.copy(alpha = 0.5f), 1f to wash.copy(alpha = 0.75f))))
+}
+
+/**
  * [thumbnail] blurred to fill its box, under a wash of [wash] so text over it stays readable. The
  * blur needs Android 12 ([isLyricsBlurSupported]); callers check before drawing this.
  */
@@ -490,27 +548,36 @@ internal fun FrostedCover(
     washTo: Float = 0.75f,
 ) {
     Crossfade(targetState = thumbnail, animationSpec = tween(600), label = "frostedCover") { thumbnail ->
-        var url by remember(thumbnail) { mutableStateOf(thumbnail) }
-        AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(LocalPlatformContext.current)
-                    .data(url)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    // Blurred this hard, a small decode looks the same and spares a full-screen bitmap.
-                    .size(FROST_DECODE_PX)
-                    .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            onError = {
-                val fallback = url?.replace("maxresdefault", "hqdefault")
-                if (fallback != null && fallback != url) url = fallback
-            },
-            modifier = Modifier.fillMaxSize().blur(FROST_BLUR, BlurredEdgeTreatment.Rectangle),
-        )
+        FrostLayer(thumbnail)
     }
     // The wash's alpha top to bottom; picked by eye on the phone.
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to wash.copy(alpha = washFrom), 1f to wash.copy(alpha = washTo))))
+}
+
+/** One cover, blurred to fill its box. */
+@Composable
+private fun FrostLayer(
+    thumbnail: String?,
+    modifier: Modifier = Modifier,
+) {
+    var url by remember(thumbnail) { mutableStateOf(thumbnail) }
+    AsyncImage(
+        model =
+            ImageRequest
+                .Builder(LocalPlatformContext.current)
+                .data(url)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                // Blurred this hard, a small decode looks the same and spares a full-screen bitmap.
+                .size(FROST_DECODE_PX)
+                .build(),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        onError = {
+            val fallback = url?.replace("maxresdefault", "hqdefault")
+            if (fallback != null && fallback != url) url = fallback
+        },
+        modifier = modifier.fillMaxSize().blur(FROST_BLUR, BlurredEdgeTreatment.Rectangle),
+    )
 }
 
 @Composable

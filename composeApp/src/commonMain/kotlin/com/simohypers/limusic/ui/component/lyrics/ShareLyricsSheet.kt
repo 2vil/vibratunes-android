@@ -58,7 +58,7 @@ import com.simohypers.limusic.ui.icon.Download
 import com.simohypers.limusic.ui.icon.KeyboardArrowDown
 import com.simohypers.limusic.ui.icon.Share
 import com.simohypers.limusic.ui.icon.LimusicIcons
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicVerticalFadeEdges
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
 import kotlinx.coroutines.launch
 import multiplatform.network.cmptoast.ToastGravity
 import multiplatform.network.cmptoast.showToast
@@ -310,7 +310,7 @@ private fun ShareLyricsPicker(
     Box(modifier = modifier.fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxWidth().appleMusicVerticalFadeEdges(topFade = 24.dp, bottomFade = 96.dp),
+            modifier = Modifier.fillMaxWidth().immersiveVerticalFadeEdges(topFade = 24.dp, bottomFade = 96.dp),
             // Room for the floating pill to hover over the last lines rather than cover them.
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 110.dp),
         ) {

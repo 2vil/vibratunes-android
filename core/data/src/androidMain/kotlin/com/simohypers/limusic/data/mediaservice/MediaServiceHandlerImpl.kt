@@ -3,10 +3,13 @@ package com.simohypers.limusic.data.mediaservice
 import com.simohypers.limusic.domain.mediaservice.queue.twinPositionMs
 import com.simohypers.limusic.domain.mediaservice.queue.switchVersion
 import com.simohypers.limusic.domain.mediaservice.queue.learnTwin
+import com.simohypers.limusic.domain.mediaservice.WatchTime
+import kotlin.math.roundToInt
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.ActivityManager.RunningAppProcessInfo
 import android.content.Context
+import android.os.SystemClock
 import android.content.Intent
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.LoudnessEnhancer
@@ -14,6 +17,7 @@ import com.simohypers.limusic.common.Config.ALBUM_CLICK
 import com.simohypers.limusic.common.Config.PLAYLIST_CLICK
 import com.simohypers.limusic.common.Config.RADIO_CLICK
 import com.simohypers.limusic.common.Config.RECOVER_TRACK_QUEUE
+import com.simohypers.limusic.common.AppVisible
 import com.simohypers.limusic.common.LOCAL_PLAYLIST_ID
 import com.simohypers.limusic.common.MERGING_DATA_TYPE
 import com.simohypers.limusic.data.lastfm.LastfmScrobbler
@@ -26,6 +30,7 @@ import com.simohypers.limusic.domain.data.player.GenericCommandButton
 import com.simohypers.limusic.domain.data.player.GenericMediaItem
 import com.simohypers.limusic.domain.data.player.GenericPlaybackParameters
 import com.simohypers.limusic.domain.data.player.GenericTracks
+import com.simohypers.limusic.domain.data.player.LiveStreamRegistry
 import com.simohypers.limusic.domain.data.player.PlayerConstants
 import com.simohypers.limusic.domain.data.player.PlaybackRefusals
 import com.simohypers.limusic.domain.data.player.PlayerError
@@ -55,6 +60,7 @@ import com.simohypers.limusic.domain.mediaservice.queue.insertQueued
 import com.simohypers.limusic.domain.mediaservice.queue.isMix
 import com.simohypers.limusic.domain.mediaservice.queue.move
 import com.simohypers.limusic.domain.mediaservice.queue.nextIndex
+import com.simohypers.limusic.domain.mediaservice.queue.prevIndex
 import com.simohypers.limusic.domain.mediaservice.queue.prevTrackTitle
 import com.simohypers.limusic.domain.mediaservice.queue.removeAt
 import com.simohypers.limusic.domain.mediaservice.queue.retainUpcoming
@@ -99,6 +105,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.single
@@ -232,7 +240,6 @@ internal class MediaServiceHandlerImpl(
     @Volatile
     private var systemEqualizerSelected = false
 
-    private var watchTimeList: ArrayList<Float> = arrayListOf()
 
     private var volumeNormalizationJob: Job? = null
 
@@ -256,6 +263,10 @@ internal class MediaServiceHandlerImpl(
 
 
     private var getFormatJob: Job? = null
+
+    /** The play being heard, for its watch time. */
+    private var watch: WatchTime? = null
+    private var registerJob: Job? = null
 
     private var progressJob: Job? = null
 
@@ -285,7 +296,6 @@ internal class MediaServiceHandlerImpl(
 
     private var songEntityJob: Job? = null
 
-    private var jobWatchtime: Job? = null
 
     private var getDataOfNowPlayingTrackStateJob: Job? = null
 
@@ -341,7 +351,6 @@ internal class MediaServiceHandlerImpl(
         loadJob = Job()
         songEntityJob = Job()
         getFormatJob = Job()
-        jobWatchtime = Job()
         skipSilent = runBlocking { dataStoreManager.skipSilent.first() == TRUE }
         // Collected rather than read once like the settings around it: the equalizer is adjusted
         // while music is playing, and a curve that only takes effect after a restart is useless
@@ -436,25 +445,6 @@ internal class MediaServiceHandlerImpl(
                         updateNotification()
                     }
                 }
-            val playbackJob =
-                launch {
-                    format.collectLatest { formatTemp ->
-                        if (dataStoreManager.sendBackToGoogle.first() == TRUE) {
-                            if (formatTemp != null) {
-                                println("format in viewModel: $formatTemp")
-                                Logger.d(TAG, "Collect format ${formatTemp.videoId}")
-                                Logger.d(TAG, "Format expire at ${formatTemp.expiredTime}")
-                                Logger.d(TAG, "AtrUrl ${formatTemp.playbackTrackingAtrUrl}")
-                                initPlayback(
-                                    formatTemp.playbackTrackingVideostatsPlaybackUrl,
-                                    formatTemp.playbackTrackingAtrUrl,
-                                    formatTemp.playbackTrackingVideostatsWatchtimeUrl,
-                                    formatTemp.cpn,
-                                )
-                            }
-                        }
-                    }
-                }
             val playbackSpeedPitchJob =
                 launch {
                     combine(dataStoreManager.playbackSpeed, dataStoreManager.pitch) { speed, pitch ->
@@ -484,7 +474,6 @@ internal class MediaServiceHandlerImpl(
                     dataStoreManager.getString(DISCORD_CONFIG_KEY).collect { discord.setConfig(DiscordConfig.parse(it)) }
                 }
             controlStateJob.join()
-            playbackJob.join()
             playbackSpeedPitchJob.join()
             discordJob.join()
             discordConfigJob.join()
@@ -498,6 +487,7 @@ internal class MediaServiceHandlerImpl(
             } else {
                 mediaItem.mediaId
             }
+        newPlay(videoId)
         val track =
             queueData.value.data.listTracks
                 .find { it.videoId == videoId }
@@ -651,81 +641,36 @@ internal class MediaServiceHandlerImpl(
             }
     }
 
-    private fun initPlayback(
-        playback: String?,
-        atr: String?,
-        watchTime: String?,
-        cpn: String?,
-    ) {
-        jobWatchtime?.cancel()
-        coroutineScope.launch {
-            if (playback != null && atr != null && watchTime != null && cpn != null) {
-                watchTimeList = arrayListOf()
-                streamRepository
-                    .initPlayback(playback, atr, watchTime, cpn, queueData.value.data.playlistId)
-                    .collect {
-                        if (it.first == 204) {
-                            Logger.d("Check initPlayback", "Success")
-                            watchTimeList.add(0f)
-                            watchTimeList.add(5.54f)
-                            watchTimeList.add(it.second)
-                            updateWatchTime()
-                        }
-                    }
+    /**
+     * A fresh play of [videoId] starts (a new track, or Repeat One starting it over): the play before
+     * it closes its watch time, and this one registers in watch history with a tracking block of its
+     * own, so a replay never folds into the play before it (desktop #764).
+     */
+    private fun newPlay(videoId: String) {
+        val now = SystemClock.elapsedRealtime()
+        sendWatchTime(watch?.close(now))
+        val w = WatchTime(now)
+        watch = w
+        registerJob?.cancel()
+        registerJob =
+            coroutineScope.launch {
+                if (dataStoreManager.sendBackToGoogle.first() != TRUE) return@launch
+                // Played, not just loaded: a queue restored at launch waits for Play.
+                _controlState.first { it.isPlaying }
+                val ping = streamRepository.takePlaybackPing(videoId) ?: return@launch
+                val status = streamRepository.initPlayback(ping.url, ping.cpn, queueData.value.data.playlistId).first()
+                Logger.d(TAG, "watch-history ping for $videoId: $status")
+                // Still this play: the ping can take long enough for the next one to have started.
+                if (status in 200..299 && watch === w) ping.watchtimeUrl?.let { w.arm(it, ping.cpn) }
             }
-        }
     }
 
-    private fun updateWatchTime() {
+    private fun sendWatchTime(report: WatchTime.Report?) {
+        report ?: return
+        val params = report.params((player.volume * 100).roundToInt())
         coroutineScope.launch {
-            jobWatchtime =
-                launch {
-                    simpleMediaState.collect { state ->
-                        if (state is SimpleMediaState.Progress) {
-                            val value = state.progress
-                            if (value > 0 && watchTimeList.isNotEmpty()) {
-                                val second = (value / 1000).toFloat()
-                                if (second in watchTimeList.last()..watchTimeList.last() + 1.2f) {
-                                    val watchTimeUrl =
-                                        _format.value?.playbackTrackingVideostatsWatchtimeUrl
-                                    val cpn = _format.value?.cpn
-                                    if (second + 20.23f < (player.duration / 1000).toFloat()) {
-                                        watchTimeList.add(second + 20.23f)
-                                        if (watchTimeUrl != null && cpn != null) {
-                                            streamRepository
-                                                .updateWatchTime(
-                                                    watchTimeUrl,
-                                                    watchTimeList,
-                                                    cpn,
-                                                    queueData.value.data.playlistId,
-                                                ).collect { response ->
-                                                    if (response == 204) {
-                                                        Logger.d("Check updateWatchTime", "Success")
-                                                    }
-                                                }
-                                        }
-                                    } else {
-                                        watchTimeList.clear()
-                                        if (watchTimeUrl != null && cpn != null) {
-                                            streamRepository
-                                                .updateWatchTimeFull(
-                                                    watchTimeUrl,
-                                                    cpn,
-                                                    queueData.value.data.playlistId,
-                                                ).collect { response ->
-                                                    if (response == 204) {
-                                                        Logger.d("Check updateWatchTimeFull", "Success")
-                                                    }
-                                                }
-                                        }
-                                    }
-                                    Logger.d("Check updateWatchTime", watchTimeList.toString())
-                                }
-                            }
-                        }
-                    }
-                }
-            jobWatchtime?.join()
+            val status = streamRepository.initPlayback(report.url, report.cpn, null, params).first()
+            Logger.d(TAG, "watch time reported ($status): ${report.stretches}, last=${report.last}")
         }
     }
 
@@ -796,14 +741,17 @@ internal class MediaServiceHandlerImpl(
                 // the beginning (#2152). The position is otherwise only saved on pause /
                 // track change / release, which misses uninterrupted background playback.
                 val positionPersistIntervalMs = 5_000L
-                // Named so the persist counter below cannot drift out of step with it, which is
-                // what a second hardcoded copy of the number did.
-                val tickIntervalMs = 50L
                 var sinceLastPositionSaveMs = 0L
                 var sinceDiscordPositionMs = 0L
+                var lastTick = TimeSource.Monotonic.markNow()
                 while (true) {
-                    delay(tickIntervalMs)
+                    // 20 a second for a visible seek bar, once a second for everything else, which
+                    // is all the screen-off consumers need (issue #7). Coming back wakes it at once.
+                    if (AppVisible.state.value) delay(50) else withTimeoutOrNull(1_000) { AppVisible.state.first { it } }
+                    val tickIntervalMs = lastTick.elapsedNow().inWholeMilliseconds
+                    lastTick = TimeSource.Monotonic.markNow()
                     _simpleMediaState.value = SimpleMediaState.Progress(player.currentPosition)
+                    watch?.tick(player.currentPosition / 1000.0)
                     sinceLastPositionSaveMs += tickIntervalMs
                     if (sinceLastPositionSaveMs >= positionPersistIntervalMs) {
                         sinceLastPositionSaveMs = 0
@@ -1362,18 +1310,24 @@ internal class MediaServiceHandlerImpl(
     }
 
     /**
-     * Previous: early in the first track of a queue that replaced another, go back to that one;
-     * otherwise the player's own rule (restart past 3 s, else the track before).
+     * Previous, desktop's prev_in_queue: past 3 s restart the song; early in the first track of a
+     * queue that replaced another, go back to that one; otherwise the track before.
+     *
+     * Moves q.current at once, as next() does. Handed to the player, the index moved only once the
+     * new track loaded, so a Next or a cover swipe made before that stepped from the old one: the
+     * cover stopped on one song and another played.
      */
     private fun previous(always: Boolean) {
         resetCrossfade()
-        if (q.current == 0 && q.prev != null && (always || player.currentPosition <= PREV_REWIND_MS)) {
-            restorePrev()
-        } else if (always) {
-            player.seekToPreviousMediaItem()
-        } else {
-            player.seekToPrevious()
+        val live = player.currentMediaItem?.mediaId?.let(LiveStreamRegistry::isLive) == true
+        if (!always && !live && player.currentPosition > PREV_REWIND_MS) {
+            player.seekTo(0)
+            return
         }
+        if (q.current == 0 && restorePrev()) return
+        val repeat = if (player.repeatMode == PlayerConstants.REPEAT_MODE_OFF) RepeatState.None else RepeatState.All
+        val i = prevIndex(q.items.size, q.current, repeat)
+        if (i != null) playIndex(i) else player.seekTo(0)
     }
 
     private fun restorePrev(): Boolean {
@@ -1842,8 +1796,6 @@ internal class MediaServiceHandlerImpl(
             songEntityJob = null
             getFormatJob?.cancel()
             getFormatJob = null
-            jobWatchtime?.cancel()
-            jobWatchtime = null
             getDataOfNowPlayingTrackStateJob?.cancel()
             getDataOfNowPlayingTrackStateJob = null
             // Cancel coroutine scope (cancelling backgroundScope also takes the Discord card down)
@@ -1917,6 +1869,10 @@ internal class MediaServiceHandlerImpl(
             stopProgressUpdate()
             mayBeSaveRecentSong()
             mayBeSavePlaybackState()
+            // A pause or the queue's end, not a rebuffer: report what was heard.
+            if (!player.playWhenReady || player.playbackState == PlayerConstants.STATE_ENDED) {
+                sendWatchTime(watch?.pause(SystemClock.elapsedRealtime()))
+            }
         }
     }
 
@@ -1957,6 +1913,8 @@ internal class MediaServiceHandlerImpl(
             // Repeat-one replays the same mediaId without reloading now-playing data: tell Discord the
             // track started over, or its bar keeps the previous play's timeline.
             nowPlayingState.value.songEntity?.let { reportTrack(it, restart = true) }
+            // From the top it is a play of its own; a reload mid-track (a stream recovered) is not.
+            if (player.currentPosition < 1_000) newPlay(mediaItem.mediaId.removePrefix(MERGING_DATA_TYPE.VIDEO))
         }
         // The player moved on by itself: a track ended, a crossfade, the notification's buttons.
         val index = player.currentMediaItemIndex

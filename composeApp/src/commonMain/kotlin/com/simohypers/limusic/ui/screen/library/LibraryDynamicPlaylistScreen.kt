@@ -250,6 +250,7 @@ private fun SongsPage(
             onPlay = play,
             onMore = { chosen = row.song },
             onAddToQueue = { sharedViewModel.addListToQueue(arrayListOf(row.track)) },
+            onPlayNext = { sharedViewModel.playListNext(arrayListOf(row.track)) },
         )
     }
 
@@ -438,6 +439,7 @@ private fun LazyItemScope.SongItem(
     onPlay: (String) -> Unit,
     onMore: () -> Unit,
     onAddToQueue: () -> Unit,
+    onPlayNext: () -> Unit,
 ) {
     // Wrapped: SongFullWidthItems puts its modifier on two nodes.
     Column(Modifier.animateItem()) {
@@ -447,6 +449,7 @@ private fun LazyItemScope.SongItem(
             onMoreClickListener = { onMore() },
             onClickListener = onPlay,
             onAddToQueue = { onAddToQueue() },
+            onPlayNext = { onPlayNext() },
             selectionMode = selection.active,
             isSelected = selection.has(row.key),
             onLongClick = { selection.start(row.key, row.track) },

@@ -3,6 +3,7 @@ package com.simohypers.limusic.ui.component
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
@@ -19,46 +21,21 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
-import com.simohypers.limusic.ui.icon.Home
-import com.simohypers.limusic.ui.icon.LibraryMusic
-import com.simohypers.limusic.ui.icon.Search
-import com.simohypers.limusic.ui.icon.LimusicIcons
-import com.simohypers.limusic.ui.navigation.destination.home.HomeDestination
 import com.simohypers.limusic.ui.navigation.destination.home.SettingsDestination
-import com.simohypers.limusic.ui.navigation.destination.library.LibraryDestination
-import com.simohypers.limusic.ui.navigation.destination.search.SearchDestination
 import com.simohypers.limusic.ui.theme.typo
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import limusic.composeapp.generated.resources.Res
-import limusic.composeapp.generated.resources.home
-import limusic.composeapp.generated.resources.library
-import limusic.composeapp.generated.resources.search
 import kotlin.reflect.KClass
 
-/** One bottom tab: where it goes, what it is called, how it looks. */
-private class LimusicTab(
-    val destination: Any,
-    val label: StringResource,
-    val icon: ImageVector,
-)
-
-// The three tabs: Home, Search, Library.
-private val limusicTabs =
-    listOf(
-        LimusicTab(HomeDestination, Res.string.home, LimusicIcons.Home),
-        LimusicTab(SearchDestination, Res.string.search, LimusicIcons.Search),
-        LimusicTab(LibraryDestination, Res.string.library, LimusicIcons.LibraryMusic),
-    )
-
-/** Position of [destination] in the tab bar, or -1 when it is not a tab. */
-fun limusicTabIndex(destination: NavDestination): Int = limusicTabs.indexOfFirst { destination.hasRoute(it.destination::class) }
+/** Position of [destination] in [tabs], or -1 when it is not one of them. */
+fun limusicTabIndex(
+    destination: NavDestination,
+    tabs: List<BottomNavScreen>,
+): Int = tabs.indexOfFirst { destination.hasRoute(it.destination::class) }
 
 /**
  * Opens a tab the way tapping it does. A tab opened with a plain navigate (an app link) sits on
@@ -72,30 +49,41 @@ fun NavController.navigateToTab(destination: Any) =
     }
 
 /**
- * The bottom tabs. The tab you are in is the last tab on the back stack, so it stays lit on the
- * album or artist pages opened from it. Tapping it there goes back to the tab's root; tapping it on
- * the root calls [onReselect] (scroll to top or refresh).
+ * The bottom tabs, the user's [tabs] in their order. The tab you are in is the last tab on the back
+ * stack, so it stays lit on the album or artist pages opened from it. Tapping it there goes back to
+ * the tab's root; tapping it on the root calls [onReselect] (scroll to top or refresh). [compact] is
+ * the "Compact navigation bar" setting: icons only, centred in a 56dp bar. Off, the bar keeps
+ * Material's own 80dp and labels.
  */
 @Composable
 fun LimusicNavigationBar(
     navController: NavController,
+    tabs: List<BottomNavScreen>,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     onReselect: (KClass<*>) -> Unit = {},
 ) {
     val backStack by navController.currentBackStack.collectAsState()
-    val tabEntry = backStack.indexOfLast { limusicTabIndex(it.destination) >= 0 }
-    val stackTab = backStack.getOrNull(tabEntry)?.destination?.let(::limusicTabIndex) ?: -1
+    val tabEntry = backStack.indexOfLast { limusicTabIndex(it.destination, tabs) >= 0 }
+    val stackTab = backStack.getOrNull(tabEntry)?.destination?.let { limusicTabIndex(it, tabs) } ?: -1
     // Settings and the pages opened from it belong to no tab, so none is lit there.
     val inSettings = backStack.indexOfLast { it.destination.hasRoute(SettingsDestination::class) } > tabEntry
     val currentTab = if (inSettings) -1 else stackTab
-    val onTabRoot = backStack.lastOrNull()?.destination?.let(::limusicTabIndex) == currentTab
+    val onTabRoot = backStack.lastOrNull()?.destination?.let { limusicTabIndex(it, tabs) } == currentTab
     Column(modifier) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         NavigationBar(
+            // NavigationBar pads itself by the system inset, so its height has to include it.
+            modifier =
+                if (compact) {
+                    Modifier.height(CompactBarHeight + NavigationBarDefaults.windowInsets.asPaddingValues().calculateBottomPadding())
+                } else {
+                    Modifier
+                },
             containerColor = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp,
         ) {
-            limusicTabs.forEachIndexed { index, tab ->
+            tabs.forEachIndexed { index, tab ->
                 val selected = index == currentTab
                 NavigationBarItem(
                     selected = selected,
@@ -109,8 +97,14 @@ fun LimusicNavigationBar(
                             navController.navigateToTab(tab.destination)
                         }
                     },
-                    icon = { Icon(tab.icon, contentDescription = null) },
-                    label = { Text(stringResource(tab.label), style = typo().bodySmall) },
+                    // Without its label the icon names the tab, for screen readers.
+                    icon = { Icon(tab.icon, contentDescription = if (compact) stringResource(tab.title) else null) },
+                    label =
+                        if (compact) {
+                            null
+                        } else {
+                            { Text(stringResource(tab.title), style = typo().bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        },
                     colors =
                         NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -124,6 +118,10 @@ fun LimusicNavigationBar(
         }
     }
 }
+
+// Each item holds itself at M3's 80dp unless the bar caps it. With no label, 56dp centres the
+// icon and its 32dp indicator with 12dp either side.
+private val CompactBarHeight = 56.dp
 
 /**
  * The top bar Home and Library share: the title on the left, the tab's own [actions] on the right. Draws below the status bar and nothing behind itself, so the screen decides the ground.

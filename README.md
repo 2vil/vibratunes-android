@@ -69,7 +69,7 @@ and seamless multi-device listening.
   <tr>
     <td align="center"><img src="assets/screenshots/player-classic-cover.webp" width="250" alt="The Classic player, colors from the cover"><br><sub>Classic</sub></td>
     <td align="center"><img src="assets/screenshots/player-expressive.webp" width="250" alt="The Material 3 Expressive player"><br><sub>Material 3 Expressive</sub></td>
-    <td align="center"><img src="assets/screenshots/player-apple-music.webp" width="250" alt="The Apple Music style player"><br><sub>Apple Music</sub></td>
+    <td align="center"><img src="assets/screenshots/player-immersive.webp" width="250" alt="The Immersive style player"><br><sub>Immersive</sub></td>
   </tr>
 </table>
 

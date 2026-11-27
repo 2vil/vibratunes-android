@@ -61,6 +61,8 @@ import com.simohypers.limusic.kotlinytmusicscraper.models.response.toLikeStatus
 import com.simohypers.limusic.kotlinytmusicscraper.models.response.toListAccountInfo
 import com.simohypers.limusic.kotlinytmusicscraper.models.youtube.YouTubeInitialPage
 import com.simohypers.limusic.kotlinytmusicscraper.pages.AlbumPage
+import com.simohypers.limusic.kotlinytmusicscraper.pages.isVideoRow
+import com.simohypers.limusic.kotlinytmusicscraper.pages.withAlbumAudio
 import com.simohypers.limusic.kotlinytmusicscraper.pages.ArtistPage
 import com.simohypers.limusic.kotlinytmusicscraper.pages.ArtistSection
 import com.simohypers.limusic.kotlinytmusicscraper.pages.SearchAllPage
@@ -109,7 +111,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -130,7 +131,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.Path
 import kotlin.jvm.JvmInline
-import kotlin.math.round
 import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -508,8 +508,24 @@ class YouTube {
                         ?.musicResponsiveHeaderRenderer
                         ?.buttons
                         .savedToLibrary(),
-            )
+            ).withAlbumAudio()
         }
+
+    /**
+     * Video rows swapped for the album audio (see [withAlbumAudio]): one more request, and only for
+     * an album that has such rows. A failed fetch keeps the video ids.
+     */
+    private suspend fun AlbumPage.withAlbumAudio(): AlbumPage {
+        val playlistId = album.playlistId
+        if (songs.none { it.isVideoRow() } || !playlistId.startsWith("OLAK5uy_")) return this
+        val audio =
+            runCatching { ytMusic.playlist("VL$playlistId").body<BrowseResponse>().fromPlaylistToTrack() }
+                .onFailure { Logger.w(TAG, "Album audio playlist failed, keeping its video rows: ${it.message}") }
+                .getOrNull() ?: return this
+        val swapped = songs.withAlbumAudio(audio)
+        if (swapped === songs) Logger.w(TAG, "Album audio playlist has ${audio.size} tracks, the album ${songs.size}: keeping its video rows")
+        return copy(songs = swapped)
+    }
 
     /**
      * Joins every run of a description. A link run contributes its `urlEndpoint` URL rather than
@@ -1387,16 +1403,7 @@ class YouTube {
         playlistId: String?,
         preferredAudioLanguage: String?,
     ): Triple<String?, PlayerResponse, MediaType> {
-        val cpn =
-            (1..16)
-                .map {
-                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"[
-                        Random.nextInt(
-                            0,
-                            64,
-                        ),
-                    ]
-                }.joinToString("")
+        val cpn = newCpn()
 
         // A refusal says something about the track; silence says something about the network, and
         // only silence is worth retrying.
@@ -1634,103 +1641,47 @@ class YouTube {
         )
     }
 
-    suspend fun updateWatchTime(
-        watchtimeUrl: String,
-        watchtimeList: ArrayList<Float>,
-        cpn: String,
-        playlistId: String?,
-    ): Result<Int> =
-        runCatching {
-            val et = watchtimeList.takeLast(2).joinToString(",")
-            val watchtime = watchtimeList.dropLast(1).takeLast(2).joinToString(",")
-            ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to watchtime, "et" to et), playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "watchtime done")
-                }
-                return@runCatching status
-            }
-        }
-
-    suspend fun updateWatchTimeFull(
-        watchtimeUrl: String,
-        cpn: String,
-        playlistId: String?,
-    ): Result<Int> =
-        runCatching {
-            val regex = Regex("len=([^&]+)")
-            val length =
-                regex
-                    .find(watchtimeUrl)
-                    ?.groupValues
-                    ?.firstOrNull()
-                    ?.drop(4) ?: "0"
-            Logger.d(TAG, length)
-            ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to length, "et" to length), playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "watchtime full done")
-                }
-                return@runCatching status
-            }
-        }
-
     /**
-     * @return [Pair<Int, Float>]
-     * Int: status code
-     * Float: second watchtime
-     * First watchtime is 5.54
+     * Register a play in watch history: one GET of `videostatsPlaybackUrl`, as desktop's
+     * register_playback does. With [params] it is a watch-time report on `videostatsWatchtimeUrl`
+     * instead (desktop #764), sent on a pause and when the play ends; SimpMusic's every 20 s kept
+     * the radio awake (issue #7).
      */
     suspend fun initPlayback(
         playbackUrl: String,
-        atrUrl: String,
-        watchtimeUrl: String,
         cpn: String,
         playlistId: String?,
-    ): Result<Pair<Int, Float>> {
-        Logger.d(TAG, "playbackUrl $playbackUrl")
-        Logger.d(TAG, "atrUrl $atrUrl")
-        Logger.d(TAG, "watchtimeUrl $watchtimeUrl")
-        return runCatching {
-            ytMusic.initPlayback(playbackUrl, cpn, null, playlistId).status.value.let { status ->
-                if (status == 204) {
-                    Logger.d(TAG, "playback done")
-                    ytMusic.initPlayback(watchtimeUrl, cpn, mapOf("st" to "0", "et" to "5.54"), playlistId).status.value.let { firstWatchTime ->
-                        if (firstWatchTime == 204) {
-                            Logger.d(TAG, "first watchtime done")
-                            delay(5000)
-                            ytMusic.atr(atrUrl, cpn, null, playlistId).status.value.let { atr ->
-                                if (atr == 204) {
-                                    Logger.d(TAG, "atr done")
-                                    delay(500)
-                                    val secondWatchTime = (round(Random.nextFloat() * 100.0) / 100.0).toFloat() + 12f
-                                    ytMusic
-                                        .initPlayback(
-                                            watchtimeUrl,
-                                            cpn,
-                                            mapOf<String, String>("st" to "0,5.54", "et" to "5.54,$secondWatchTime"),
-                                            playlistId,
-                                        ).status.value
-                                        .let { watchtime ->
-                                            if (watchtime == 204) {
-                                                Logger.d(TAG, "watchtime done")
-                                                return@runCatching Pair(watchtime, secondWatchTime)
-                                            } else {
-                                                return@runCatching Pair(watchtime, secondWatchTime)
-                                            }
-                                        }
-                                } else {
-                                    return@runCatching Pair(atr, 0f)
-                                }
-                            }
-                        } else {
-                            return@runCatching Pair(firstWatchTime, 0f)
-                        }
-                    }
-                } else {
-                    return@runCatching Pair(status, 0f)
-                }
-            }
+        params: Map<String, String>? = null,
+    ): Result<Int> =
+        runCatching {
+            val custom = params?.let { it + ("cver" to STREAM_WEB_REMIX.clientVersion) }
+            ytMusic.initPlayback(playbackUrl, cpn, custom, playlistId).status.value
         }
-    }
+
+    /**
+     * A fresh tracking block, with its cpn, for a play whose own an earlier play already used: a
+     * Repeat One loop, a replay off the cache or a download (desktop #764). music.youtube.com
+     * fetches one for every loop, so each play gets its own `ei`/`plid`. One WEB_REMIX `/player`,
+     * nothing resolved.
+     */
+    suspend fun playbackTracking(videoId: String): Result<Pair<String, PlayerResponse.PlaybackTracking?>> =
+        runCatching {
+            val cpn = newCpn()
+            val response =
+                ytMusic
+                    .player(
+                        STREAM_WEB_REMIX,
+                        videoId,
+                        null,
+                        cpn,
+                        signatureTimestamp = ytMusic.cipher.playerInfo()?.signatureTimestamp ?: approximateSignatureTimestamp(),
+                        poToken = ytMusic.webPoTokens(videoId)?.session,
+                    ).body<PlayerResponse>()
+                    .withFexpTracking()
+            cpn to response.playbackTracking
+        }
+
+    private fun newCpn() = (1..16).map { "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"[Random.nextInt(0, 64)] }.joinToString("")
 
     suspend fun nextYouTubePlaylists(continuation: String): Result<Pair<List<MusicTwoRowItemRenderer>, String?>> =
         runCatching {

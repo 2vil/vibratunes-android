@@ -13,6 +13,7 @@ import com.simohypers.limusic.common.SETTINGS_FILENAME
 import com.simohypers.limusic.domain.manager.DataStoreManager
 import com.simohypers.limusic.domain.repository.CommonRepository
 import com.simohypers.limusic.logger.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -47,6 +48,12 @@ class AutoBackupWorker(
                 return@withContext Result.success()
             }
 
+            // WorkManager runs a stopped attempt again; one that already saved its file counts.
+            if (System.currentTimeMillis() - dataStoreManager.autoBackupLastTime.first() < MIN_GAP_MS) {
+                Logger.i(TAG, "Backed up recently, skipping")
+                return@withContext Result.success()
+            }
+
             // Get backup settings
             val backupDownloaded = dataStoreManager.backupDownloaded.first() == DataStoreManager.TRUE
             val maxFiles = dataStoreManager.autoBackupMaxFiles.first()
@@ -61,11 +68,8 @@ class AutoBackupWorker(
             tempBackupFile.delete()
 
             if (success) {
-                // Cleanup old backups
-                cleanupOldBackups(maxFiles)
-
-                // Update last backup time
                 dataStoreManager.setAutoBackupLastTime(System.currentTimeMillis())
+                cleanupOldBackups(maxFiles)
 
                 Logger.i(TAG, "Auto backup completed successfully")
                 Result.success()
@@ -73,6 +77,8 @@ class AutoBackupWorker(
                 Logger.e(TAG, "Failed to save backup to Downloads")
                 Result.retry()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG, "Auto backup failed: ${e.message}")
             Result.retry()
@@ -243,5 +249,8 @@ class AutoBackupWorker(
 
     companion object {
         private const val TAG = "AutoBackupWorker"
+
+        // ponytail: fixed 12 h, under the shortest interval (daily); per-frequency if an hourly one appears
+        private const val MIN_GAP_MS = 12 * 60 * 60 * 1000L
     }
 }

@@ -129,6 +129,15 @@ class QueueStateTest {
     }
 
     @Test
+    fun prevIndexWrapsOnlyOnRepeatAll() {
+        assertEquals(1, prevIndex(3, 2, RepeatState.None))
+        assertNull(prevIndex(3, 0, RepeatState.None))
+        assertNull(prevIndex(3, 0, RepeatState.One))
+        assertEquals(2, prevIndex(3, 0, RepeatState.All))
+        assertNull(prevIndex(0, 0, RepeatState.All))
+    }
+
+    @Test
     fun appendedPageMixesIntoTheTailButLeavesTheNextTrack() {
         val positions = mutableListOf<Int>()
         repeat(20) {

@@ -725,6 +725,11 @@ private fun ArtistSections(
                                 arrayListOf(song),
                             )
                         },
+                        onPlayNext = {
+                            sharedViewModel.playListNext(
+                                arrayListOf(song),
+                            )
+                        },
                         selectionMode = selection.active,
                         isSelected = selection.has(rowKey(song.videoId, song.setVideoId)),
                         onLongClick = { selection.start(rowKey(song.videoId, song.setVideoId), song) },

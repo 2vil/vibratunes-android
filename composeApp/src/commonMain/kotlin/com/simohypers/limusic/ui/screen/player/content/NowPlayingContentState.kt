@@ -64,7 +64,7 @@ internal fun String.stripRichSyncTimestamps(): String =
         .trim()
 
 /**
- * "154 kbps · 48 kHz" — the Apple Music style's quality line, read off the format YouTube served
+ * "154 kbps · 48 kHz" — the Immersive style's quality line, read off the format YouTube served
  * for the track now playing: its `bitrate` (the figure the Info sheet prints in bps) and its
  * `sampleRate`. A figure the format does not carry is dropped rather than guessed, and null comes
  * back when neither is known, so the line hides instead of showing a placeholder.
@@ -120,7 +120,7 @@ class NowPlayingContentState(
     val audioQualityLabel: String? = null,
     /**
      * The user's lyrics delay, applied at read time. [currentLyricLineIndex] already has it baked in;
-     * this is for anything that times WITHIN a line (the Apple Music lyric strip's word sweep).
+     * this is for anything that times WITHIN a line (the Immersive lyric strip's word sweep).
      */
     val lyricsOffsetMs: Long = 0L,
     /**
@@ -166,8 +166,11 @@ class NowPlayingContentActions(
     val onToolbarVisibilityChange: (Boolean) -> Unit,
     /** Reorders the queue. `from`/`to` are absolute indices into [NowPlayingContentState.artworkQueue]. */
     val onMoveQueueItem: (from: Int, to: Int) -> Unit,
-    /** Removes one queue entry. `index` is an absolute index into [NowPlayingContentState.artworkQueue]. */
-    val onRemoveQueueItem: (index: Int) -> Unit,
+    /**
+     * Removes one queue entry. `index` is an absolute index into [NowPlayingContentState.artworkQueue];
+     * only if `videoId` is still the track there and it isn't the one playing. Returns whether it went.
+     */
+    val onRemoveQueueItem: (index: Int, videoId: String) -> Boolean,
     /** Opens the full song sheet for one queue entry; `index` is absolute, as above. */
     val onQueueItemMore: (index: Int, track: Track) -> Unit,
     /** Closes the player and opens Settings › Lyrics sources. */

@@ -14,6 +14,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -63,6 +64,12 @@ class LimusicLyrics(
         val origin: String,
         val revision: Long?,
         val authors: List<String>,
+        /**
+         * The video id the service files this lyric under: the song's own, or another upload of the
+         * same song (YouTube Music has one per album, single, compilation). Votes, reports and the
+         * revision check go there.
+         */
+        val filedId: String,
     )
 
     sealed interface Fresh {
@@ -81,15 +88,28 @@ class LimusicLyrics(
      * The song's lyric, or with [known] (the revision the cache holds) only whether it moved: the
      * revision is the answer's ETag, so an unchanged lyric is a 304 off Cloudflare's edge. Throws
      * when the service couldn't be asked, which the chain treats as "no answer", not "none".
+     *
+     * With the song's name ([title], [artist], [durationSeconds]) an id with no lyric of its own
+     * gets another upload's, same title and artist, length within 2 s ([Lyric.filedId]). Without
+     * a length nothing is named: it could be any version. Whole seconds, so every listener's
+     * request is the same edge-cached URL.
      */
     suspend fun get(
         videoId: String,
         known: Long? = null,
+        title: String? = null,
+        artist: String? = null,
+        durationSeconds: Int? = null,
     ): Fresh {
         if (!plausible(videoId)) return Fresh.Gone
         val r =
             http.get("$root/v1/lyrics/$videoId") {
                 ua()
+                if (title != null && artist != null && durationSeconds != null && durationSeconds > 0) {
+                    parameter("title", title.clipBytes(FIELD_MAX_BYTES))
+                    parameter("artist", artist.clipBytes(FIELD_MAX_BYTES))
+                    parameter("duration", durationSeconds)
+                }
                 // Answers are read in the user's order, so while Limusic is first a stalled request
                 // holds back lyrics another source already has. A hit or a miss comes off the edge in
                 // well under a second; past this the chain moves on.
@@ -99,7 +119,7 @@ class LimusicLyrics(
         return when (r.status) {
             HttpStatusCode.NotModified -> Fresh.Same
             HttpStatusCode.NotFound -> Fresh.Gone
-            HttpStatusCode.OK -> answerToLyric(r.bodyAsText())?.let { Fresh.New(it) } ?: Fresh.Gone
+            HttpStatusCode.OK -> answerToLyric(r.bodyAsText(), videoId)?.let { Fresh.New(it) } ?: Fresh.Gone
             else -> error("HTTP ${r.status.value} from Limusic Lyrics")
         }
     }
@@ -266,8 +286,11 @@ class LimusicLyrics(
             }
         }
 
-        /** The service's answer in the app's shape. Null when it holds nothing to show. */
-        internal fun answerToLyric(text: String): Lyric? {
+        /** The service's answer to [asked] in the app's shape. Null when it holds nothing to show. */
+        internal fun answerToLyric(
+            text: String,
+            asked: String,
+        ): Lyric? {
             val a = runCatching { json.decodeFromString<Answer>(text) }.getOrNull() ?: return null
             val lines =
                 a.lines.map { l ->
@@ -275,13 +298,14 @@ class LimusicLyrics(
                         timeMs = l.timeMs,
                         endMs = l.endTimeMs,
                         text = l.text,
-                        words = l.words.map { LyricWord(it.text, it.startMs, it.bg) }.ifEmpty { null },
+                        words = l.words.map { LyricWord(it.text, it.startMs, it.bg, it.endMs) }.ifEmpty { null },
                         agent = l.agent,
                     )
                 }
             val lyrics = Found(lines).toLyrics() ?: return null
             // The service sends five at most; no more than that is ever kept or shown.
-            return Lyric(lyrics, a.origin, a.revision, a.authors.filter { it.isNotBlank() }.take(5))
+            // A server from before the fallback doesn't name it: then it is the id asked.
+            return Lyric(lyrics, a.origin, a.revision, a.authors.filter { it.isNotBlank() }.take(5), a.videoId.ifEmpty { asked })
         }
 
         /** At most [max] bytes of UTF-8, never splitting a character. */
@@ -294,6 +318,7 @@ class LimusicLyrics(
 
     @Serializable
     private class Answer(
+        @SerialName("video_id") val videoId: String = "",
         val origin: String = "",
         val revision: Long? = null,
         val authors: List<String> = emptyList(),
@@ -314,5 +339,6 @@ class LimusicLyrics(
         val text: String,
         @SerialName("start_ms") val startMs: Long,
         val bg: Boolean = false,
+        @SerialName("end_ms") val endMs: Long? = null,
     )
 }

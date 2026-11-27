@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -41,10 +42,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,6 +63,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -93,21 +99,22 @@ import com.simohypers.limusic.ui.icon.Replay5
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.icon.Subtitles
 import com.simohypers.limusic.ui.icon.SubtitlesOff
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicBottomCluster
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicHeaderActions
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicLyricStrip
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicLyricsView
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicMeshBackdrop
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicOutputSheet
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicQueueView
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicTypography
-import com.simohypers.limusic.ui.screen.player.content.applemusic.AppleMusicView
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicFadeBetween
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicGradientColorAt
-import com.simohypers.limusic.ui.screen.player.content.applemusic.appleMusicVerticalFadeEdges
-import com.simohypers.limusic.ui.screen.player.content.applemusic.displayName
-import com.simohypers.limusic.ui.screen.player.content.applemusic.rememberAppleMusicMesh
-import com.simohypers.limusic.ui.screen.player.content.applemusic.rememberAppleMusicTypography
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveBottomCluster
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveHeaderActions
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveLyricStrip
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveLyricsView
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveMesh
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveMeshBackdrop
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveOutputSheet
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveQueueView
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveTypography
+import com.simohypers.limusic.ui.screen.player.content.immersive.ImmersiveView
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveFadeBetween
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveGradientColorAt
+import com.simohypers.limusic.ui.screen.player.content.immersive.immersiveVerticalFadeEdges
+import com.simohypers.limusic.ui.screen.player.content.immersive.displayName
+import com.simohypers.limusic.ui.screen.player.content.immersive.rememberImmersiveMesh
+import com.simohypers.limusic.ui.screen.player.content.immersive.rememberImmersiveTypography
 import com.simohypers.limusic.ui.theme.seed
 import com.simohypers.limusic.ui.theme.typo
 import com.simohypers.limusic.viewModel.NowPlayingScreenData
@@ -118,14 +125,14 @@ import org.koin.compose.koinInject
 import kotlin.math.pow
 
 /**
- * The Apple Music Now Playing style: a style-internal dock (Lyrics · [Output | Listen Together] ·
+ * The Immersive Now Playing style: a style-internal dock (Lyrics · [Output | Listen Together] ·
  * Queue) swaps the BODY between three full-screen views instead of scrolling a single column, à la
  * [NowPlayingContentSpotify]/[NowPlayingContentM3Expressive]. MAIN stands on a mesh made of the
- * artwork's own colours; LYRICS and QUEUE on the frosted cover art — see [AppleMusicMainView].
+ * artwork's own colours; LYRICS and QUEUE on the frosted cover art — see [ImmersiveMainView].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun NowPlayingContentAppleMusic(
+fun NowPlayingContentImmersive(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
 ) {
@@ -137,8 +144,8 @@ fun NowPlayingContentAppleMusic(
     var viewState by rememberSaveable {
         mutableStateOf(
             sharedViewModel.lastPlayerViewTab.value
-                ?.let { saved -> AppleMusicView.entries.firstOrNull { it.name == saved } }
-                ?: AppleMusicView.MAIN,
+                ?.let { saved -> ImmersiveView.entries.firstOrNull { it.name == saved } }
+                ?: ImmersiveView.MAIN,
         )
     }
     LaunchedEffect(viewState) { sharedViewModel.setLastPlayerViewTab(viewState.name) }
@@ -146,7 +153,7 @@ fun NowPlayingContentAppleMusic(
     val lyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
     LaunchedEffect(lyricsRequested) {
         if (lyricsRequested) {
-            viewState = AppleMusicView.LYRICS
+            viewState = ImmersiveView.LYRICS
             sharedViewModel.consumeFullscreenLyricsRequest()
         }
     }
@@ -163,9 +170,9 @@ fun NowPlayingContentAppleMusic(
     // effect and cancels the wait, so the fallback only ever fires for a track that really has
     // none.
     LaunchedEffect(state.screenData.lyricsData, viewState) {
-        if (viewState != AppleMusicView.LYRICS || state.screenData.lyricsData != null) return@LaunchedEffect
+        if (viewState != ImmersiveView.LYRICS || state.screenData.lyricsData != null) return@LaunchedEffect
         delay(LYRICS_ABSENCE_GRACE_MS)
-        viewState = AppleMusicView.MAIN
+        viewState = ImmersiveView.MAIN
     }
 
     // This style has no scroll and no collapsed toolbar (unlike Classic/M3E); park the shared
@@ -180,17 +187,17 @@ fun NowPlayingContentAppleMusic(
     val activePillContent = remember(seedColor) { lerp(seedColor, Color.Black, 0.6f) }
 
     // Only a Spotify canvas takes the whole page now; Apple Music's animated artwork plays in the
-    // artwork's own frame (see AppleMusicMainView), so it neither blacks the page out nor hides the
+    // artwork's own frame (see ImmersiveMainView), so it neither blacks the page out nor hides the
     // controls.
     // A short window (#13) has no room for the picture, so it draws neither a canvas nor a video.
     val fullscreenCanvas = state.screenData.canvasData?.let { !it.isAnimatedArtwork() } == true && !state.isShort
     val showCanvasBackdrop =
-        viewState == AppleMusicView.MAIN &&
+        viewState == ImmersiveView.MAIN &&
             !state.isShort &&
             (fullscreenCanvas || (state.screenData.canvasData == null && state.screenData.isVideo && state.shouldShowVideo))
 
     val deviceVolumeController = rememberDeviceVolumeController()
-    val typography = rememberAppleMusicTypography()
+    val typography = rememberImmersiveTypography()
     val localDensity = LocalDensity.current
 
     // The canvas page is black and every other state is the artwork gradient — but the swap must
@@ -201,7 +208,7 @@ fun NowPlayingContentAppleMusic(
     val canvasBackdropAlpha by animateFloatAsState(
         targetValue = if (showCanvasBackdrop && fullscreenCanvas) 1f else 0f,
         animationSpec = tween(300),
-        label = "appleMusicCanvasBackdrop",
+        label = "immersiveCanvasBackdrop",
     )
 
     // Where the sound leaves by. The player lists its own outputs; while casting, the receiver is
@@ -216,7 +223,7 @@ fun NowPlayingContentAppleMusic(
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Box(modifier = Modifier.matchParentSize()) {
-            AppleMusicArtworkBackdrop(state = state, actions = actions, seedColor = seedColor)
+            ImmersiveArtworkBackdrop(state = state, actions = actions, seedColor = seedColor)
             // Flat black only for a CANVAS (it fills the screen). A video letterboxes, so a black page
             // turns the bars above and below it into dead black slabs — keep the artwork-tinted
             // gradient there.
@@ -224,10 +231,10 @@ fun NowPlayingContentAppleMusic(
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = canvasBackdropAlpha)))
             }
         }
-        Crossfade(targetState = viewState, animationSpec = tween(300), label = "appleMusicView") { view ->
+        Crossfade(targetState = viewState, animationSpec = tween(300), label = "immersiveView") { view ->
             when (view) {
-                AppleMusicView.MAIN ->
-                    AppleMusicMainView(
+                ImmersiveView.MAIN ->
+                    ImmersiveMainView(
                         state = state,
                         actions = actions,
                         typography = typography,
@@ -241,8 +248,8 @@ fun NowPlayingContentAppleMusic(
                         onOpenOutput = openOutput,
                     )
 
-                AppleMusicView.LYRICS ->
-                    AppleMusicLyricsView(
+                ImmersiveView.LYRICS ->
+                    ImmersiveLyricsView(
                         state = state,
                         actions = actions,
                         typography = typography,
@@ -255,8 +262,8 @@ fun NowPlayingContentAppleMusic(
                         onOpenOutput = openOutput,
                     )
 
-                AppleMusicView.QUEUE ->
-                    AppleMusicQueueView(
+                ImmersiveView.QUEUE ->
+                    ImmersiveQueueView(
                         state = state,
                         actions = actions,
                         typography = typography,
@@ -281,7 +288,7 @@ fun NowPlayingContentAppleMusic(
         // MAIN only: Queue and Lyrics each have their own header, and a floating button over
         // those reads as belonging to the list rather than to the panel.
         if (getPlatform() == Platform.Desktop) {
-            if (viewState == AppleMusicView.MAIN) {
+            if (viewState == ImmersiveView.MAIN) {
                 PillIconButton(
                     imageVector = state.dismissIcon,
                     shape = rounded(24.dp),
@@ -321,7 +328,7 @@ fun NowPlayingContentAppleMusic(
                 )
             }
             // Song | Video under the grabber, on the cover's page only, on a video or a song with another version.
-            if (state.canSwitchVersion && viewState == AppleMusicView.MAIN) {
+            if (state.canSwitchVersion && viewState == ImmersiveView.MAIN) {
                 VersionSwitch(
                     isVideo = state.screenData.isVideo && state.shouldShowVideo,
                     onSwitch = actions.onSwitchVersion,
@@ -338,7 +345,7 @@ fun NowPlayingContentAppleMusic(
         }
 
         if (showOutputSheet) {
-            AppleMusicOutputSheet(
+            ImmersiveOutputSheet(
                 outputs = audioOutputs,
                 castState = state.castState,
                 deviceVolumeController = deviceVolumeController,
@@ -366,12 +373,12 @@ fun NowPlayingContentAppleMusic(
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppleMusicMainView(
+private fun ImmersiveMainView(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
-    viewState: AppleMusicView,
-    onSelectView: (AppleMusicView) -> Unit,
+    typography: ImmersiveTypography,
+    viewState: ImmersiveView,
+    onSelectView: (ImmersiveView) -> Unit,
     seedColor: Color,
     activePillContainer: Color,
     activePillContent: Color,
@@ -393,7 +400,7 @@ private fun AppleMusicMainView(
     val controlsAlpha by animateFloatAsState(
         targetValue = if (!fullscreenCanvas || state.showControlLayout) 1f else 0f,
         animationSpec = tween(durationMillis = if (!fullscreenCanvas || state.showControlLayout) 180 else 500, easing = LinearEasing),
-        label = "appleMusicControlsAlpha",
+        label = "immersiveControlsAlpha",
     )
 
     // Over-video controls, exactly like Classic/M3E: hidden by default, a tap on the video shows
@@ -412,9 +419,11 @@ private fun AppleMusicMainView(
     // real value so the first frame does not lay a video out against a wrong one.
     var bottomContentHeightDp by remember { mutableIntStateOf(430) }
 
-    // What the page's mesh is read from: the cover, or the animated artwork's still once it is up —
-    // the page should continue whatever is actually on screen above it.
-    var coverBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Every pager page reads its own cover into a mesh (ImmersiveArtworkPage), so the page behind can
+    // blend from one song's colours into the next exactly as far as the covers have slid, on a swipe
+    // and on the skip buttons alike, instead of waiting for the new song's cover to load first.
+    val pageMeshes = remember { mutableStateMapOf<Int, ImmersiveMesh>() }
+    // The animated artwork's still, once it is up: the page continues whatever is on screen above it.
     var clipStill by remember(animatedArtwork?.url) { mutableStateOf<ImageBitmap?>(null) }
     var clipFrameHeight by remember(animatedArtwork?.url) { mutableStateOf(0.dp) }
 
@@ -429,17 +438,28 @@ private fun AppleMusicMainView(
         // The page itself. A video keeps the frosted cover behind it and a fullscreen canvas the black
         // page, as before; everything else stands on the mesh, hung from where the artwork ends.
         val meshPage = !fullscreenCanvas && !isVideoBackdrop && !state.isShort
-        val mesh =
+        val clipMesh =
             if (meshPage) {
-                rememberAppleMusicMesh(
-                    artwork = if (showsClip) clipStill else coverBitmap,
-                    seed = (animatedArtwork?.url ?: state.screenData.thumbnailURL).hashCode(),
-                )
+                key(animatedArtwork?.url) { rememberImmersiveMesh(artwork = clipStill, seed = animatedArtwork?.url.hashCode()) }
             } else {
                 null
             }
+        val pager = state.artworkPagerState
+        // The page the pager is on or has just passed; the page after it is the one sliding in.
+        val lowerPage by remember(pager) { derivedStateOf { pager.pageBelow() } }
+        fun meshAt(page: Int): ImmersiveMesh? =
+            (if (showsClip && page == state.currentOrderIndex) clipMesh else null) ?: pageMeshes[page]
+        val mesh = if (meshPage) meshAt(lowerPage) else null
         val meshSeam = if (showsClip) clipFrameHeight else artworkHeight
-        if (meshPage) AppleMusicMeshBackdrop(mesh = mesh, seam = meshSeam)
+        if (meshPage) {
+            ImmersiveMeshBackdrop(
+                mesh = mesh,
+                seam = meshSeam,
+                snapKey = lowerPage,
+                upcoming = meshAt(lowerPage + 1),
+                upcomingAlpha = { pager.slidPast(lowerPage) },
+            )
+        }
 
         // The band under the status bar and the grabber, where a bright or busy sleeve drowns their
         // white glyphs: blurred (TopBandBlur, inside each page so it moves with it) and darkened
@@ -455,10 +475,10 @@ private fun AppleMusicMainView(
             userScrollEnabled = !isRepeatOne && state.artworkQueue.isNotEmpty(),
             key = { idx ->
                 val vid = state.artworkQueue.getOrNull(idx)?.videoId.orEmpty()
-                "appleMusicArtwork_${vid}_$idx"
+                "immersiveArtwork_${vid}_$idx"
             },
         ) { page ->
-            AppleMusicArtworkPage(
+            ImmersiveArtworkPage(
                 state = state,
                 actions = actions,
                 localDensity = localDensity,
@@ -475,7 +495,7 @@ private fun AppleMusicMainView(
                 onToggleVideoOverlay = { showVideoOverlay = !showVideoOverlay },
                 showSubtitle = showSubtitle,
                 onToggleSubtitle = { showSubtitle = !showSubtitle },
-                onCoverBitmap = { coverBitmap = it },
+                pageMeshes = pageMeshes,
                 onClipStill = { still, height ->
                     clipStill = still
                     clipFrameHeight = height
@@ -489,10 +509,10 @@ private fun AppleMusicMainView(
         // matches the page beneath it pixel for pixel — faded in over the stretch the cover dissolves
         // over, ending at the clip's bottom edge.
         if (meshPage && animatedArtwork != null && clipFrameHeight > 0.dp) {
-            AppleMusicMeshBackdrop(
+            ImmersiveMeshBackdrop(
                 mesh = mesh,
                 seam = meshSeam,
-                modifier = Modifier.appleMusicFadeBetween(transparentAt = clipFrameHeight - artworkFade, opaqueAt = clipFrameHeight),
+                modifier = Modifier.immersiveFadeBetween(transparentAt = clipFrameHeight - artworkFade, opaqueAt = clipFrameHeight),
             )
         }
 
@@ -502,7 +522,7 @@ private fun AppleMusicMainView(
             val topWashAlpha by animateFloatAsState(
                 targetValue = TOP_WASH_MIN_ALPHA + (TOP_WASH_MAX_ALPHA - TOP_WASH_MIN_ALPHA) * (mesh?.topLuminance ?: 1f),
                 animationSpec = tween(TOP_WASH_FADE_MS),
-                label = "appleMusicTopWash",
+                label = "immersiveTopWash",
             )
             Box(
                 modifier =
@@ -583,18 +603,18 @@ private fun AppleMusicMainView(
                                 with(localDensity) { coords.size.height.toDp().value.toInt() }
                         },
             ) {
-                AppleMusicMainTitleRow(state = state, actions = actions, typography = typography)
+                ImmersiveMainTitleRow(state = state, actions = actions, typography = typography)
                 if (state.isShort) {
                     Spacer(modifier = Modifier.height(12.dp))
                 } else {
                     Spacer(modifier = Modifier.height(20.dp))
-                    AppleMusicLyricStrip(
+                    ImmersiveLyricStrip(
                         state = state,
                         typography = typography,
-                        onClick = { onSelectView(AppleMusicView.LYRICS) },
+                        onClick = { onSelectView(ImmersiveView.LYRICS) },
                     )
                 }
-                AppleMusicBottomCluster(
+                ImmersiveBottomCluster(
                     state = state,
                     actions = actions,
                     typography = typography,
@@ -631,7 +651,7 @@ private fun AppleMusicMainView(
                     ) {
                         // The page's OWN colour, not black. This scrim is what the artwork fades
                         // INTO, so it has to be the same tone the page is painted with below it —
-                        // appleMusicGradientColorAt(seed, 1f), i.e. the thumbnail's colour darkened,
+                        // immersiveGradientColorAt(seed, 1f), i.e. the thumbnail's colour darkened,
                         // exactly like the bottom stop of backdropBrush. Fading to black instead
                         // laid a dark slab over a tinted page and left a visible seam where the two
                         // met, which read as "black smudge into transparent".
@@ -639,7 +659,7 @@ private fun AppleMusicMainView(
                         // Fully opaque at the bottom for the same reason: at 0.85 the artwork still
                         // showed through the last few pixels and tinted the seam a different colour
                         // than the page continuing beneath it.
-                        val pageScrimColor = appleMusicGradientColorAt(seedColor, 1f)
+                        val pageScrimColor = immersiveGradientColorAt(seedColor, 1f)
                         Box(
                             modifier =
                                 Modifier
@@ -761,7 +781,7 @@ private fun AppleMusicMainView(
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
-                                AppleMusicHeaderActions(state = state, actions = actions)
+                                ImmersiveHeaderActions(state = state, actions = actions)
                             }
                         }
                     }
@@ -777,7 +797,7 @@ private fun AppleMusicMainView(
  * stacked after this call (the canvas black layer here) must keep drawing on top of it.
  */
 @Composable
-internal fun BoxScope.AppleMusicArtworkBackdrop(
+internal fun BoxScope.ImmersiveArtworkBackdrop(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
     seedColor: Color,
@@ -800,13 +820,13 @@ internal fun BoxScope.AppleMusicArtworkBackdrop(
     val backdropBrush =
         remember(seedColor) {
             Brush.verticalGradient(
-                0f to appleMusicGradientColorAt(seedColor, 0f),
-                0.48f to appleMusicGradientColorAt(seedColor, 0.48f),
-                1f to appleMusicGradientColorAt(seedColor, 1f),
+                0f to immersiveGradientColorAt(seedColor, 0f),
+                0.48f to immersiveGradientColorAt(seedColor, 0.48f),
+                1f to immersiveGradientColorAt(seedColor, 1f),
             )
         }
 
-    // Apple frosts the COVER ART into the page background — the colour and the soft blotches
+    // The COVER ART is frosted into the page background: the colour and the soft blotches
     // of the artwork stay visible through it. A flat tinted gradient, which is what this used
     // to be, gets the hue right and loses everything else: the page reads as a solid colour
     // swatch rather than as the record it belongs to.
@@ -850,10 +870,10 @@ internal fun BoxScope.AppleMusicArtworkBackdrop(
 }
 
 @Composable
-internal fun AppleMusicMainTitleRow(
+internal fun ImmersiveMainTitleRow(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
-    typography: AppleMusicTypography,
+    typography: ImmersiveTypography,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -893,7 +913,7 @@ internal fun AppleMusicMainTitleRow(
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
-        AppleMusicHeaderActions(state = state, actions = actions)
+        ImmersiveHeaderActions(state = state, actions = actions)
     }
 }
 
@@ -904,7 +924,7 @@ internal fun AppleMusicMainTitleRow(
  * also opens on a canvas. Adjacent pages: a static thumbnail in the same full-width square.
  */
 @Composable
-private fun AppleMusicArtworkPage(
+private fun ImmersiveArtworkPage(
     state: NowPlayingContentState,
     actions: NowPlayingContentActions,
     localDensity: Density,
@@ -921,23 +941,35 @@ private fun AppleMusicArtworkPage(
     onToggleVideoOverlay: () -> Unit,
     showSubtitle: Boolean,
     onToggleSubtitle: () -> Unit,
-    onCoverBitmap: (ImageBitmap) -> Unit,
+    pageMeshes: MutableMap<Int, ImmersiveMesh>,
     onClipStill: (ImageBitmap?, Dp) -> Unit,
 ) {
     val pageTrack = state.artworkQueue.getOrNull(page)
     val isCurrentPage = page == state.currentOrderIndex
     val pageShowsFullscreen = isCurrentPage && (fullscreenCanvas || isVideoBackdrop)
     val pageShowsClip = isCurrentPage && animatedArtwork != null
-    // How much of the artwork dissolves into the page: 42% of the frame, on a smoothstep curve
-    // (appleMusicVerticalFadeEdges), so there is no line where the fade starts.
-    val artworkFade = artworkHeight * ARTWORK_FADE_FRACTION
+    // This page's cover as a mesh, for the page behind (pageMeshes). Seeded by the track, not the url:
+    // a neighbour shows a smaller thumbnail than the current page, and the same song must keep the
+    // same arrangement when it becomes current.
+    var pageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    val pageMesh = rememberImmersiveMesh(artwork = pageBitmap, seed = pageTrack?.videoId.hashCode())
+    DisposableEffect(page, pageMesh) {
+        if (pageMesh != null) pageMeshes[page] = pageMesh
+        onDispose { if (pageMeshes[page] === pageMesh) pageMeshes.remove(page) }
+    }
+    // The sharp cover gives way to CoverBlurLayers over its lower part.
+    val sharpMask =
+        Modifier.immersiveFadeBetween(
+            transparentAt = artworkHeight * COVER_SHARP_GONE,
+            opaqueAt = artworkHeight * COVER_SHARP_UNTIL,
+        )
 
     // The animated artwork fades in over the cover once its still is up, rather than cutting in.
     var clipReady by remember(animatedArtwork?.url) { mutableStateOf(false) }
     val clipAlpha by animateFloatAsState(
         targetValue = if (pageShowsClip && clipReady) 1f else 0f,
         animationSpec = tween(ARTWORK_FADE_IN_MS),
-        label = "appleMusicAnimatedArtworkIn",
+        label = "immersiveAnimatedArtworkIn",
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -951,6 +983,7 @@ private fun AppleMusicArtworkPage(
                     .crossfade(550)
                     .build()
             val coverAlpha = if (pageShowsFullscreen) 0f else 1f - clipAlpha
+            CoverBlurLayers(model = coverRequest, height = artworkHeight, modifier = Modifier.align(Alignment.TopCenter).alpha(coverAlpha))
             Box(
                 modifier =
                     Modifier
@@ -964,7 +997,7 @@ private fun AppleMusicArtworkPage(
                     onSuccess = {
                         val bitmap = it.result.image.toImageBitmap()
                         actions.onArtworkBitmap(bitmap)
-                        onCoverBitmap(bitmap)
+                        pageBitmap = bitmap
                     },
                     onError = {
                         val fallback = artworkUrl?.replace("maxresdefault", "hqdefault")
@@ -981,7 +1014,7 @@ private fun AppleMusicArtworkPage(
                         Modifier
                             .fillMaxSize()
                             .alpha(coverAlpha)
-                            .appleMusicVerticalFadeEdges(topFade = 0.dp, bottomFade = artworkFade),
+                            .then(sharpMask),
                 )
                 TopBandBlur(model = coverRequest, solidTo = topBandSolid, fadeTo = topBand, modifier = Modifier.alpha(coverAlpha))
             }
@@ -1070,7 +1103,7 @@ private fun AppleMusicArtworkPage(
                             // Rendered INSIDE the video zone and drawn after the tap-catcher below,
                             // so its buttons are the topmost target — otherwise the catcher swallows
                             // every tap and the buttons look dead.
-                            Crossfade(targetState = showVideoOverlay, label = "appleMusicVideoOverlay") { shown ->
+                            Crossfade(targetState = showVideoOverlay, label = "immersiveVideoOverlay") { shown ->
                                 if (shown) {
                                     Box(
                                         modifier =
@@ -1129,7 +1162,7 @@ private fun AppleMusicArtworkPage(
                         }
                     }
                 } else {
-                    Crossfade(targetState = state.screenData.canvasData?.isVideo, label = "appleMusicCanvasKind") { isVideo ->
+                    Crossfade(targetState = state.screenData.canvasData?.isVideo, label = "immersiveCanvasKind") { isVideo ->
                         if (isVideo == true) {
                             state.screenData.canvasData?.url?.let { url ->
                                 // cropToBounds, NOT the default style's fill-height-and-overflow
@@ -1210,6 +1243,7 @@ private fun AppleMusicArtworkPage(
                     .diskCacheKey(staticThumb)
                     .crossfade(300)
                     .build()
+            CoverBlurLayers(model = thumbRequest, height = artworkHeight, modifier = Modifier.align(Alignment.TopCenter))
             Box(
                 modifier =
                     Modifier
@@ -1220,10 +1254,11 @@ private fun AppleMusicArtworkPage(
                 AsyncImage(
                     model = thumbRequest,
                     contentDescription = pageTrack.title,
+                    onSuccess = { pageBitmap = it.result.image.toImageBitmap() },
                     contentScale = ContentScale.Crop,
                     placeholder = rememberHolderPainter(),
                     error = rememberHolderPainter(),
-                    modifier = Modifier.fillMaxSize().appleMusicVerticalFadeEdges(topFade = 0.dp, bottomFade = artworkFade),
+                    modifier = Modifier.fillMaxSize().then(sharpMask),
                 )
                 // Blurred like the current page's, or its top band would turn sharp mid-swipe.
                 TopBandBlur(model = thumbRequest, solidTo = topBandSolid, fadeTo = topBand)
@@ -1244,7 +1279,7 @@ private fun AppleMusicArtworkPage(
  * seeds the mesh until the still has been read.
  */
 @Composable
-internal fun AppleMusicAnimatedArtworkPage(
+internal fun ImmersiveAnimatedArtworkPage(
     canvas: NowPlayingScreenData.CanvasData,
     cover: ImageBitmap?,
     topChrome: Dp,
@@ -1255,7 +1290,7 @@ internal fun AppleMusicAnimatedArtworkPage(
     val statusBarHeight = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
     var clipStill by remember(canvas.url) { mutableStateOf<ImageBitmap?>(null) }
     var clipFrameHeight by remember(canvas.url) { mutableStateOf(0.dp) }
-    val mesh = rememberAppleMusicMesh(artwork = clipStill ?: cover, seed = canvas.url.hashCode())
+    val mesh = rememberImmersiveMesh(artwork = clipStill ?: cover, seed = canvas.url.hashCode())
     val pageAlpha by animateFloatAsState(
         targetValue = if (clipFrameHeight > 0.dp && mesh != null) 1f else 0f,
         animationSpec = tween(ARTWORK_FADE_IN_MS),
@@ -1264,7 +1299,7 @@ internal fun AppleMusicAnimatedArtworkPage(
     BoxWithConstraints(modifier = modifier.fillMaxSize().alpha(pageAlpha)) {
         val artworkFade = minOf(maxWidth, maxHeight * ARTWORK_MAX_HEIGHT_FRACTION) * ARTWORK_FADE_FRACTION
         val topBand = topChrome + TOP_BAND_STRIP
-        AppleMusicMeshBackdrop(mesh = mesh, seam = clipFrameHeight)
+        ImmersiveMeshBackdrop(mesh = mesh, seam = clipFrameHeight)
         AnimatedArtworkFrame(
             canvas = canvas,
             heightLimit = maxHeight * ANIMATED_ARTWORK_MAX_HEIGHT_FRACTION,
@@ -1276,13 +1311,13 @@ internal fun AppleMusicAnimatedArtworkPage(
                 clipFrameHeight = height
             },
         )
-        // The page laid back over the clip's lower part, as in AppleMusicMainView: a mask never
+        // The page laid back over the clip's lower part, as in ImmersiveMainView: a mask never
         // reaches the video surface.
         if (clipFrameHeight > 0.dp) {
-            AppleMusicMeshBackdrop(
+            ImmersiveMeshBackdrop(
                 mesh = mesh,
                 seam = clipFrameHeight,
-                modifier = Modifier.appleMusicFadeBetween(transparentAt = clipFrameHeight - artworkFade, opaqueAt = clipFrameHeight),
+                modifier = Modifier.immersiveFadeBetween(transparentAt = clipFrameHeight - artworkFade, opaqueAt = clipFrameHeight),
             )
         }
         // The wash under the top bar, held through the status bar and eased out by the band's end:
@@ -1325,7 +1360,7 @@ internal fun AppleMusicAnimatedArtworkPage(
  * of it is cropped. The clip's still sits under it: it sizes the frame (its proportions ARE the
  * clip's) and shows while the clip loads, so the frame never opens as a black box. [onStill] hands
  * the still and the frame's height back for the page's mesh, and for the copy of the page that
- * AppleMusicMainView lays over the frame's lower part — the frame itself carries no fade mask,
+ * ImmersiveMainView lays over the frame's lower part — the frame itself carries no fade mask,
  * because a mask never reaches the video surface.
  */
 @Composable
@@ -1376,7 +1411,7 @@ private fun BoxScope.AnimatedArtworkFrame(
             }
             // The frame already has the clip's own shape, so "crop to bounds" crops nothing; it is
             // the path that sizes the surface from Media3's own presentation state (see the canvas
-            // note in AppleMusicArtworkPage) and keeps a shutter up until the first frame is ready.
+            // note in ImmersiveArtworkPage) and keeps a shutter up until the first frame is ready.
             MediaPlayerView(
                 url = canvas.url,
                 cropToBounds = true,
@@ -1410,9 +1445,61 @@ private fun TopBandBlur(
         modifier =
             modifier
                 .fillMaxSize()
-                .appleMusicFadeBetween(transparentAt = fadeTo, opaqueAt = solidTo)
+                .immersiveFadeBetween(transparentAt = fadeTo, opaqueAt = solidTo)
                 .blur(TOP_BAND_BLUR),
     )
+}
+
+// The cover twice more under the sharp one, lightly and then heavily blurred, each clearing a little
+// lower than the layer above it, so the cover goes gradually soft. The heavy layer runs past the
+// cover's bottom edge by COVER_BLEED_FRACTION, over a mirror image of the cover: the blur carries
+// the cover's own bottom colours down into the page, and the picture never ends on a line.
+@Composable
+private fun CoverBlurLayers(
+    model: Any?,
+    height: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val bleed = height * COVER_BLEED_FRACTION
+    Box(modifier = modifier.fillMaxWidth().height(height + bleed)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .immersiveFadeBetween(transparentAt = height + bleed, opaqueAt = height * COVER_HEAVY_UNTIL)
+                    // Clips to this box, which is what cuts the mirror image off at the bleed.
+                    .blur(COVER_HEAVY_BLUR),
+        ) {
+            AsyncImage(
+                model = model,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().height(height),
+            )
+            AsyncImage(
+                model = model,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .offset(y = height)
+                        .fillMaxWidth()
+                        .height(height)
+                        .graphicsLayer { scaleY = -1f },
+            )
+        }
+        AsyncImage(
+            model = model,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .immersiveFadeBetween(transparentAt = height * COVER_SOFT_GONE, opaqueAt = height * COVER_SOFT_UNTIL)
+                    .blur(COVER_SOFT_BLUR),
+        )
+    }
 }
 
 // The status-bar gradient: alpha × (1 − p)^1.5, dark right at the top and falling off fast, drawn
@@ -1437,8 +1524,7 @@ private const val TOP_WASH_FADE_MS = 900
 private val TOP_BAND_BLUR = 16.dp
 
 // Radius of the frosted cover art behind the page. Large enough that no detail of the artwork
-// survives as a shape — what is left is its colour and its broad light and dark areas, which is
-// precisely what Apple's background is.
+// survives as a shape — what is left is its colour and its broad light and dark areas.
 private val BACKDROP_BLUR_RADIUS = 80.dp
 
 // Height of the Android grabber's tap target, right under the status bar. A tall video frame
@@ -1463,6 +1549,17 @@ private const val BACKDROP_TINT_ALPHA = 0.62f
 // The bottom share of the artwork that dissolves into the page. Was 0.42: a tester found the
 // cover's edge too blurred.
 private const val ARTWORK_FADE_FRACTION = 0.25f
+
+// Where each cover layer starts to clear and is gone, as shares of the cover's height from the
+// top, how far the heavy layer runs past the cover's bottom edge, and the two blurs (CoverBlurLayers).
+private const val COVER_SHARP_UNTIL = 0.55f
+private const val COVER_SHARP_GONE = 0.85f
+private const val COVER_SOFT_UNTIL = 0.68f
+private const val COVER_SOFT_GONE = 0.94f
+private const val COVER_HEAVY_UNTIL = 0.75f
+private const val COVER_BLEED_FRACTION = 0.35f
+private val COVER_SOFT_BLUR = 12.dp
+private val COVER_HEAVY_BLUR = 40.dp
 
 // A full-width square cover fits a portrait page with room to spare; only a landscape window is
 // short enough for this cap to bite.

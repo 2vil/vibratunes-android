@@ -227,16 +227,13 @@ fun HomeScreen(
     val homeData = remember(homeItems) { homeItems.sortedByDescending { it.isQuickPicks() } }
     val params by viewModel.params.collectAsStateWithLifecycle()
     val layout by viewModel.homeLayout.collectAsStateWithLifecycle()
-    // Home shows the shelves it knows by kind, in the order Edit Home set, ours ahead of YouTube's
-    // as on desktop. A mood chip's feed is the chip's alone, and a signed-out Home lists whatever it
-    // was sent: it carries few of the kinds, and without the rest it is half empty.
-    val signedIn = accountInfo != null
+    // Every shelf the feed sends, in the order Edit Home set, ours ahead of YouTube's as on desktop.
+    // Known kinds are keyed by kind, so hiding or moving one holds in every language; the rest by
+    // title. Dropping the rest when signed in also dropped every known shelf whose title the table
+    // lacks (a language added since, or YouTube renaming one) while Edit Home said it was on.
     val shelves =
-        remember(homeData, params, signedIn) {
-            homeData.mapNotNull { item ->
-                val kind = homeShelfKind(item.title, item.moreEndpoint?.browseId)
-                if (kind != null || params != null || !signedIn) HomeBlock.Shelf(item, kind) else null
-            }
+        remember(homeData) {
+            homeData.map { item -> HomeBlock.Shelf(item, homeShelfKind(item.title, item.moreEndpoint?.browseId)) }
         }
     val blocks =
         remember(shelves, params, layout) {

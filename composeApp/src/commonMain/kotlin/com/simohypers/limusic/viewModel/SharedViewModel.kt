@@ -18,6 +18,8 @@ import com.simohypers.limusic.domain.data.model.searchResult.playlists.Playlists
 import com.simohypers.limusic.domain.data.type.PlaylistType as LibraryPlaylist
 import com.simohypers.limusic.domain.data.model.lyrics.LimusicRating
 import com.simohypers.limusic.domain.data.model.lyrics.LyricsSource
+import com.simohypers.limusic.domain.data.model.lyrics.keptOnVideo
+import com.simohypers.limusic.domain.mediaservice.queue.songOfVideo
 import com.simohypers.limusic.domain.data.entities.NewFormatEntity
 import com.simohypers.limusic.domain.data.entities.SongEntity
 import com.simohypers.limusic.domain.data.entities.SongInfoEntity
@@ -237,7 +239,7 @@ class SharedViewModel(
 
 
     /**
-     * Which body of the Apple Music player was open last — held by ENUM NAME so this class stays
+     * Which body of the Immersive player was open last — held by ENUM NAME so this class stays
      * ignorant of the UI enum, which is internal to the player package.
      *
      * It cannot live in the composable: that player is inside a ModalBottomSheet, so dismissing
@@ -291,7 +293,7 @@ class SharedViewModel(
                                 }
                                 nowPlaying.songEntity?.let { song ->
                                     if (nowPlayingScreenData.value.lyricsData == null) {
-                                        loadLyrics(song, (timeline.total / 1000).toInt())
+                                        loadLyrics(song, ((timeline.total + 500) / 1000).toInt())
                                     }
                                 }
                             }
@@ -697,12 +699,13 @@ class SharedViewModel(
         viewModelScope.launch {
             val order = LyricsSource.order(dataStoreManager.lyricsProviders.first())
             val artist = lyricsArtist(song)
-            suspend fun fetch() = lyricsCanvasRepository.getLyrics(song.videoId, song.title, artist, song.albumName, durationSeconds, order)
+            val twin = songOfVideo(song.videoId)
+            suspend fun fetch() = lyricsCanvasRepository.getLyrics(song.videoId, song.title, artist, song.albumName, durationSeconds, order, twin)
             val entity = fetch()
             if (_nowPlayingState.value?.songEntity?.videoId != song.videoId) return@launch
             showLyrics(song.videoId, entity)
             // A cached lyric is shown at once and brought up to date behind it (Limusic Lyrics).
-            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, order)) {
+            if (entity != null && lyricsCanvasRepository.recheckLyrics(song.videoId, song.title, artist, durationSeconds, order, twin)) {
                 val fresh = fetch()
                 if (_nowPlayingState.value?.songEntity?.videoId == song.videoId) showLyrics(song.videoId, fresh)
             }
@@ -753,10 +756,17 @@ class SharedViewModel(
             title = title ?: song.title,
             artist = artist ?: lyricsArtist(song),
             album = if (title == null) song.albumName else null,
-            durationSeconds = (timeline.value.total / 1000).toInt(),
+            durationSeconds = ((timeline.value.total + 500) / 1000).toInt(),
             searched = title != null,
+            song = songOfVideo(song.videoId),
         )
     }
+
+    /** The song [videoId] is the music video of, when it is a queued video YouTube paired with one. */
+    private fun songOfVideo(videoId: String): Track? =
+        mediaPlayerHandler.queueData.value?.data?.listTracks?.firstNotNullOfOrNull { row ->
+            row.takeIf { it.videoId == videoId }?.songOfVideo()
+        }
 
     /** The votes on the song's live Limusic lyric, or null when it has none. Throws LimusicException. */
     suspend fun limusicRating(videoId: String): LimusicRating? = lyricsCanvasRepository.limusicRating(videoId)
@@ -774,8 +784,12 @@ class SharedViewModel(
         note: String?,
     ) = lyricsCanvasRepository.limusicReport(videoId, reason, note)
 
-    /** What the cache holds for [videoId]: the lyrics on screen, for the picker to keep as they are. */
-    suspend fun savedLyrics(videoId: String): LyricsEntity? = lyricsCanvasRepository.getSavedLyrics(videoId).first()
+    /**
+     * What the cache holds for [videoId]: the lyrics on screen, for the picker to keep as they are.
+     * Null for a music video showing its song's, which the picker asks for again.
+     */
+    suspend fun savedLyrics(videoId: String): LyricsEntity? =
+        lyricsCanvasRepository.getSavedLyrics(videoId).first()?.takeIf { songOfVideo(videoId) == null || it.keptOnVideo }
 
     /** Keep [entity] for its song whatever the order says, or with null go back to Automatic. */
     fun chooseLyrics(entity: LyricsEntity?) {
@@ -789,7 +803,7 @@ class SharedViewModel(
                 lyricsCanvasRepository.forgetLyrics(song.videoId)
                 _lyricsMissFor.value = null
                 _nowPlayingScreenData.update { it.copy(lyricsData = null) }
-                loadLyrics(song, (timeline.value.total / 1000).toInt())
+                loadLyrics(song, ((timeline.value.total + 500) / 1000).toInt())
             }
         }
     }
@@ -801,7 +815,12 @@ class SharedViewModel(
             data.copy(lyricsData = data.lyricsData?.copy(offsetMs = offsetMs, pinned = true))
         }
         viewModelScope.launch {
-            val saved = lyricsCanvasRepository.getSavedLyrics(videoId).first() ?: return@launch
+            var saved = lyricsCanvasRepository.getSavedLyrics(videoId).first()
+            // A music video showing its song's lyrics nudges them where they are cached, the song's
+            // row. Without a segment map the video is on its own timing, and so is its nudge.
+            val song = songOfVideo(videoId)?.takeIf { it.twinSegments.isNotEmpty() }
+            if (song != null && saved?.keptOnVideo != true) saved = lyricsCanvasRepository.getSavedLyrics(song.videoId).first()
+            saved ?: return@launch
             lyricsCanvasRepository.insertLyrics(saved.copy(offsetMs = offsetMs, pinned = true))
         }
     }
@@ -845,7 +864,8 @@ class SharedViewModel(
             }
 
             if (!resolved) {
-                nowPlayingState.value?.songEntity?.canvasUrl?.let { url ->
+                // Not the repository's "no artwork" mark, which is not a url.
+                nowPlayingState.value?.songEntity?.canvasUrl?.takeIf { it.startsWith("http") }?.let { url ->
                     _nowPlayingScreenData.update {
                         it.copy(
                             canvasData =
@@ -1304,6 +1324,20 @@ class SharedViewModel(
         viewModelScope.launch { dataStoreManager.putString(FLAT_PROGRESS_BAR, if (on) TRUE else "") }
     }
 
+    // Off by default: the 56dp tab bar is a taste, not a fix, so existing users keep Material's 80dp.
+    val compactNavBar: StateFlow<Boolean> = dataStoreManager.getString(COMPACT_NAV_BAR).map { it == TRUE }.stateInStored()
+
+    fun setCompactNavBar(on: Boolean) {
+        viewModelScope.launch { dataStoreManager.putString(COMPACT_NAV_BAR, if (on) TRUE else "") }
+    }
+
+    /** The tab bar's tabs as `BottomNavScreen` keys in order, "" until the user first picks. */
+    val bottomBarTabs: StateFlow<String> = dataStoreManager.getString(BOTTOM_BAR_TABS).map { it.orEmpty() }.stateInStored()
+
+    fun setBottomBarTabs(keys: String) {
+        viewModelScope.launch { dataStoreManager.putString(BOTTOM_BAR_TABS, keys) }
+    }
+
     /**
      * The colour "Adapt colors to artwork" last took from a cover, saved so a cold start opens in the
      * restored track's colour instead of the theme's accent while the queue and its cover load. Read
@@ -1329,7 +1363,6 @@ class SharedViewModel(
 
     fun getNowPlayingStyle() = dataStoreManager.nowPlayingStyle
 
-    fun getLyricsStyle() = dataStoreManager.lyricsStyle
 
     fun getLyricsOffsetMs() = dataStoreManager.lyricsOffsetMs
 
@@ -1357,11 +1390,6 @@ class SharedViewModel(
         }
     }
 
-    fun setLyricsStyle(style: String) {
-        viewModelScope.launch {
-            dataStoreManager.setLyricsStyle(style)
-        }
-    }
 
     fun getRomanizationLanguages() = dataStoreManager.romanizationLanguages
 
@@ -1487,7 +1515,7 @@ data class NowPlayingScreenData(
         val isVideo: Boolean,
         val url: String,
         // A still of the clip at the clip's own size — Apple Music's animated artwork sends one.
-        // The Apple Music player shows it under the clip while that loads, and reads the clip's
+        // The Immersive player shows it under the clip while that loads, and reads the clip's
         // proportions off it, so the frame is the right shape before the first video frame arrives.
         val thumbUrl: String? = null,
     )
@@ -1540,3 +1568,5 @@ private const val NEW_PLAYLIST_WHERE = "new_playlist_where"
 private const val ARTWORK_COLOR = "artwork_color"
 private const val FLAT_PROGRESS_BAR = "flat_progress_bar"
 private const val UI_SCALE = "ui_scale"
+private const val COMPACT_NAV_BAR = "compact_nav_bar"
+private const val BOTTOM_BAR_TABS = "bottom_bar_tabs"

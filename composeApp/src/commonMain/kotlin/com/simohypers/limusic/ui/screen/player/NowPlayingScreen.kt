@@ -3,13 +3,21 @@
 package com.simohypers.limusic.ui.screen.player
 
 import androidx.compose.animation.Animatable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,8 +25,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.contentColorFor
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -36,9 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +79,7 @@ import com.simohypers.limusic.domain.utils.toSongEntity
 import com.simohypers.limusic.ui.component.NowPlayingBottomSheet
 import com.simohypers.limusic.ui.component.QueueBottomSheet
 import com.simohypers.limusic.ui.component.QueuePosition
+import com.simohypers.limusic.ui.component.removeFromQueueIfStillThere
 import com.simohypers.limusic.ui.icon.KeyboardArrowDown
 import com.simohypers.limusic.ui.icon.LimusicIcons
 import com.simohypers.limusic.ui.navigation.destination.home.ListenTogetherDestination
@@ -72,7 +88,7 @@ import com.simohypers.limusic.ui.navigation.destination.list.AlbumDestination
 import com.simohypers.limusic.ui.navigation.destination.list.ArtistDestination
 import com.simohypers.limusic.ui.navigation.destination.player.FullscreenDestination
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentActions
-import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentAppleMusic
+import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentImmersive
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentLimusic
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentM3Expressive
 import com.simohypers.limusic.ui.screen.player.content.NowPlayingContentState
@@ -84,6 +100,8 @@ import com.simohypers.limusic.viewModel.NowPlayingBottomSheetUIEvent
 import com.simohypers.limusic.viewModel.NowPlayingBottomSheetViewModel
 import com.simohypers.limusic.viewModel.SharedViewModel
 import com.simohypers.limusic.viewModel.UIEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -99,6 +117,15 @@ private const val TAG = "NowPlayingScreen"
 // Below this the players swap the big cover for a small one (#13): a phone on its side is 340-430.
 private const val SHORT_WINDOW_DP = 600
 
+// Material3's own sheet thresholds (BottomSheetDefaults keeps them internal), so a drag during the
+// slide-up settles the way a drag on the open sheet does.
+private val SHEET_POSITIONAL_THRESHOLD = 56.dp
+private val SHEET_VELOCITY_THRESHOLD = 125.dp
+private const val SCRIM_ALPHA = .5f
+
+// Of the player's height: well under a pixel, so the spring doesn't stop short and then jump.
+private const val ENTRANCE_THRESHOLD = .0005f
+
 @OptIn(ExperimentalFoundationApi::class)
 @ExperimentalMaterial3Api
 @Composable
@@ -108,17 +135,66 @@ fun NowPlayingScreen(
     onDismiss: () -> Unit = {},
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    // Created already open. Material3 turns the sheet's drag on only once its state has settled on
+    // a visible value, so a sheet sliding up through show() can't be grabbed until it lands. The
+    // slide-up is ours instead (entrance below), and it can be held from the first frame.
+    // Reported upstream: https://issuetracker.google.com/issues/587973840 — once fixed there,
+    // rememberModalBottomSheetState and its own show() can come back.
     val sheetState =
-        rememberModalBottomSheetState(
-            skipPartiallyExpanded = true,
+        rememberBottomSheetState(
+            initialValue = SheetValue.Expanded,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
         )
+    // So a rotation doesn't play the slide-up again.
+    var opened by rememberSaveable { mutableStateOf(false) }
+    // How far below its place the player is drawn, as a share of its height: 1 = off the screen.
+    // Bounded like Material3's anchors: the spring stops at the top instead of overshooting past it.
+    val entrance = remember { Animatable(if (opened) 0f else 1f, ENTRANCE_THRESHOLD).apply { updateBounds(0f, 1f) } }
+    val entering by remember { derivedStateOf { entrance.value > 0f } }
+    // The theme's spatial spring, the one Material3 slides its sheet with, with a threshold that
+    // suits a 0..1 value.
+    val spatialSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val entranceSpec =
+        remember(spatialSpec) {
+            (spatialSpec as? SpringSpec<*>)?.let { spring(it.dampingRatio, it.stiffness, ENTRANCE_THRESHOLD) } ?: spatialSpec
+        }
+
+    // Where a slide-up the finger let go of goes: back up, or down and away.
+    val settleEntrance: suspend (close: Boolean, velocity: Float) -> Unit = { close, velocity ->
+        entrance.animateTo(if (close) 1f else 0f, entranceSpec, velocity)
+        if (close) {
+            currentOnDismiss()
+        } else {
+            opened = true
+        }
+    }
+
+    LaunchedEffect(sheetState) {
+        snapshotFlow { sheetState.targetValue }.collectLatest { target ->
+            if (target == SheetValue.Hidden) {
+                // Back, or a tap beside the sheet, while it slides up: Material3 slides the sheet
+                // away, so ours holds still and doesn't fight it.
+                entrance.stop()
+            } else if (entrance.value > 0f && !entrance.isRunning) {
+                // The slide-up itself, or picking it up again if Material3's close was undone.
+                settleEntrance(false, 0f)
+            }
+        }
+    }
 
     val hideSheet: () -> Unit = {
         coroutineScope.launch {
-            sheetState.hide()
-            onDismiss()
+            if (entrance.value > 0f) {
+                settleEntrance(true, 0f)
+            } else {
+                sheetState.hide()
+                currentOnDismiss()
+            }
         }
     }
+
+    val currentHideSheet by rememberUpdatedState(hideSheet)
 
     ModalBottomSheet(
         modifier =
@@ -127,27 +203,93 @@ fun NowPlayingScreen(
         onDismissRequest = {
             onDismiss()
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        // The sheet itself sits still and open; the colour is painted by the content that slides.
+        containerColor = Color.Transparent,
+        contentColor = contentColorFor(MaterialTheme.colorScheme.background),
         dragHandle = {},
-        scrimColor = Color.Black.copy(alpha = .5f),
+        // Material3 fades its scrim on the state's target, which starts out open: it would pop in.
+        // It follows the slide instead. Recomposes this small scope per frame, only while sliding.
+        scrimColor = Color.Black.copy(alpha = SCRIM_ALPHA * (1f - entrance.value)),
         sheetState = sheetState,
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
         shape = RectangleShape,
     ) {
-        Box {
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Before the layer, so the finger is tracked against the screen, not the content it moves.
+                .carryWhileEntering(entrance, sheetState, coroutineScope, settleEntrance)
+                .graphicsLayer { translationY = entrance.value * size.height }
+                .background(MaterialTheme.colorScheme.background),
+        ) {
             NowPlayingScreenContent(
                 sharedViewModel = sharedViewModel,
                 navController = navController,
-                isExpanded = sheetState.currentValue == SheetValue.Expanded,
+                // Not before it has slid all the way up, as when Material3 slid it.
+                isExpanded = sheetState.currentValue == SheetValue.Expanded && !entering,
                 dismissIcon = LimusicIcons.KeyboardArrowDown,
                 onDismiss = {
-                    hideSheet()
+                    currentHideSheet()
                 },
             )
             BusyPill(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 16.dp))
         }
     }
 }
+
+/**
+ * Only a gesture that starts while the player slides up is taken here: the finger stops it where
+ * it is and a drag carries it either way; let go, it settles up or away like the sheet would. Once
+ * it has landed this stands aside, and Material3's drag and the content inside work as before.
+ */
+private fun Modifier.carryWhileEntering(
+    entrance: Animatable<Float, AnimationVector1D>,
+    sheetState: SheetState,
+    scope: CoroutineScope,
+    settle: suspend (close: Boolean, velocity: Float) -> Unit,
+): Modifier =
+    pointerInput(Unit) {
+        val positionalThreshold = SHEET_POSITIONAL_THRESHOLD.toPx()
+        val velocityThreshold = SHEET_VELOCITY_THRESHOLD.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (entrance.value <= 0f || sheetState.targetValue == SheetValue.Hidden) return@awaitEachGesture
+            val height = size.height.toFloat().coerceAtLeast(1f)
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { entrance.stop() }
+            val tracker = VelocityTracker()
+            tracker.addPosition(down.uptimeMillis, down.position)
+            var travel = Offset.Zero
+            var dragging = false
+            try {
+                while (true) {
+                    val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    tracker.addPosition(change.uptimeMillis, change.position)
+                    val delta = change.position - change.previousPosition
+                    travel += delta
+                    if (!dragging && travel.getDistance() > viewConfiguration.touchSlop) dragging = true
+                    // Seen before anything inside (Initial pass), so the pager, the lists and the
+                    // sheet's own drag all find it taken and stand down. A tap isn't taken: it lands.
+                    if (dragging) change.consume()
+                    if (!change.pressed) break
+                    if (dragging && delta.y != 0f) {
+                        val to = entrance.value + delta.y / height
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { entrance.snapTo(to) }
+                    }
+                }
+            } finally {
+                val velocity = if (dragging) tracker.calculateVelocity().y else 0f
+                val close =
+                    when {
+                        !dragging -> false
+                        velocity > velocityThreshold -> true
+                        velocity < -velocityThreshold -> false
+                        else -> travel.y > positionalThreshold
+                    }
+                // Material3 closing it meanwhile (back) has the last word.
+                if (sheetState.targetValue != SheetValue.Hidden) scope.launch { settle(close, velocity / height) }
+            }
+        }
+    }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -172,7 +314,7 @@ fun NowPlayingScreenContent(
     // Plus this song's own nudge from the source picker.
     val lyricsOffsetMs = globalLyricsOffsetMs + (screenDataState.lyricsData?.offsetMs ?: 0)
     val castState by sharedViewModel.castState.collectAsStateWithLifecycle()
-    // Apple Music style's quality line under the progress bar — see NowPlayingContentState.toAudioQualityLabel.
+    // Immersive style's quality line under the progress bar — see NowPlayingContentState.toAudioQualityLabel.
     val formatState by sharedViewModel.format.collectAsStateWithLifecycle(initialValue = null)
 
     val videosOn by sharedViewModel.getVideo.collectAsStateWithLifecycle()
@@ -218,25 +360,45 @@ fun NowPlayingScreenContent(
         )
     var isAnimatingFromPlayer by remember { mutableStateOf(false) }
     var isUserDraggingActive by remember { mutableStateOf(false) }
-    // Whether a real finger-drag is waiting to be turned into a seek. See the latch below.
-    var pendingUserSwipe by remember { mutableStateOf(false) }
+    val latestQueueSize by rememberUpdatedState(artworkQueue.size)
 
-    // Drag detection — `isScrollInProgress` is `true` for both user drags (forwarded
-    // by the outer Modifier.scrollable on the Column) and programmatic
-    // `animateScrollToPage`. We disambiguate via `isAnimatingFromPlayer`, which we
-    // set explicitly around the player → pager animation (try/finally).
+    // ② Pager → Player: when a swipe comes to rest, play the page it rests on. `isScrollInProgress`
+    // is true for the user's drag and fling and for ①'s animateScrollToPage; `isAnimatingFromPlayer`,
+    // set around ①, tells them apart. Adjacent (±1) → Next/SkipToPrevious, which keep play or pause
+    // as it was; a far page → playMediaItemInMediaSource.
+    //
+    // On the swipe's END, not on each settledPage: a run of quick flicks keeps the scroll going from
+    // one to the next while settledPage still moves at every page, and a seek per settle, armed once
+    // per drag, took only the first. The cover went on to the page the flicks ended on and the
+    // player stayed songs behind.
+    //
+    // Only after a user scroll: a pager composed again (Immersive's Queue tab, where it is not
+    // composed at all) holds a stale settledPage, and taking that for a swipe sent the player back to
+    // the song that had just been playing.
+    //
+    // Against the player's index now, not this screen's, which hears of a track change only once the
+    // new song's row is read: from that, Next went a page past the cover.
     LaunchedEffect(artworkPagerState) {
         snapshotFlow {
             artworkPagerState.isScrollInProgress to isAnimatingFromPlayer
         }.collect { (scrolling, animating) ->
+            val wasSwiping = isUserDraggingActive
             isUserDraggingActive = scrolling && !animating
-            // Latched, and cleared only once a seek has been dispatched for it. settledPage can
-            // move for reasons that are NOT a swipe — the pager being composed for the first time,
-            // or re-composed after the Apple Music style spent a while on its Queue/Lyrics tab,
-            // where the pager does not exist at all and its settledPage stays frozen on the track
-            // that was playing when the user left MAIN. Without this latch, coming back from that
-            // tab replays a stale page as though it had just been swiped to.
-            if (isUserDraggingActive) pendingUserSwipe = true
+            if (!wasSwiping || isUserDraggingActive) return@collect
+            val settled = artworkPagerState.settledPage
+            val orderIndex = mediaPlayerHandler.currentOrderIndex()
+            if (settled !in 0 until latestQueueSize || settled == orderIndex) return@collect
+            runCatching {
+                when (val action = computeSeekAction(settled, orderIndex)) {
+                    ArtworkSeekAction.Next -> sharedViewModel.onUIEvent(UIEvent.Next)
+                    // UIEvent.Previous would restart the song once it is past 3 seconds.
+                    ArtworkSeekAction.Previous -> sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
+                    is ArtworkSeekAction.Skip -> mediaPlayerHandler.playMediaItemInMediaSource(action.index)
+                    ArtworkSeekAction.NoOp -> Unit
+                }
+            }.onFailure { error ->
+                Logger.w(TAG, "ArtworkPager seek failed: ${error.message}")
+            }
         }
     }
 
@@ -293,7 +455,7 @@ fun NowPlayingScreenContent(
                 } else {
                     artworkPagerState.scrollToPage(target)
                 }
-                // A pager off screen (Classic's Queue or Lyrics view, Apple's Queue tab) has no
+                // A pager off screen (Classic's Queue or Lyrics view, Immersive's Queue tab) has no
                 // layout to slide through, so the slide moves nothing and the page stays on the old
                 // track, its cover shown on return. A snap only sets the position, which holds.
                 if (artworkPagerState.currentPage != target) artworkPagerState.scrollToPage(target)
@@ -301,66 +463,6 @@ fun NowPlayingScreenContent(
                 isAnimatingFromPlayer = false
             }
         }
-    }
-
-    // ② Pager → Player: seek when user settles on a different page.
-    // Adjacent (±1) → Next/Previous (preserves crossfade flow on Android).
-    // Far skip → playMediaItemInMediaSource (handles unshuffling internally).
-    //
-    // Keyed on artworkPagerState ALONE — deliberately NOT on currentOrderIndex/queue size, which
-    // are read through rememberUpdatedState instead. This effect exists to catch a user SWIPE, and
-    // the only thing that moves settledPage is the pager. Re-keying it on the track built a NEW
-    // snapshotFlow on every track change, and a new flow's FIRST emission is whatever settledPage
-    // happens to hold — distinctUntilChanged has no previous value to suppress it against — so a
-    // STALE page was dispatched as though the user had just swiped to it.
-    //
-    // That is what broke the Apple Music queue: its pager lives inside MAIN, so while QUEUE is on
-    // screen the pager is not composed at all and settledPage still points at the previous track.
-    // Tapping a row seeked correctly, the track changed, this effect was rebuilt, and it
-    // immediately read the stale page — computeSeekAction(previous, current) == Previous — which
-    // sent the player straight back to the song that had just been playing.
-    // AppleMusicQueueView already uses rememberUpdatedState for exactly this hazard (its offset).
-    val latestOrderIndex by rememberUpdatedState(currentOrderIndex)
-    val latestQueueSize by rememberUpdatedState(artworkQueue.size)
-    LaunchedEffect(artworkPagerState) {
-        snapshotFlow { artworkPagerState.settledPage }
-            .distinctUntilChanged()
-            .collect { settled ->
-                if (isAnimatingFromPlayer) return@collect
-                // The seek is a response to a SWIPE, so there must have been one. This is what
-                // stops the Apple Music queue from being overruled: tapping a row seeks correctly,
-                // the track changes, and then this effect would otherwise notice the pager sitting
-                // on the old page and "correct" it right back.
-                if (!pendingUserSwipe) return@collect
-                pendingUserSwipe = false
-                val queueSize = latestQueueSize
-                val orderIndex = latestOrderIndex
-                if (queueSize == 0) return@collect
-                if (settled !in 0 until queueSize) return@collect
-                if (settled == orderIndex) return@collect
-
-                runCatching {
-                    when (val action = computeSeekAction(settled, orderIndex)) {
-                        ArtworkSeekAction.Next -> {
-                            sharedViewModel.onUIEvent(UIEvent.Next)
-                        }
-                        // Use SkipToPrevious so a swipe always goes to the previous track —
-                        // UIEvent.Previous would seek to 0 of the current track once the
-                        // playhead has passed the 3-second mark.
-                        ArtworkSeekAction.Previous -> {
-                            sharedViewModel.onUIEvent(UIEvent.SkipToPrevious)
-                        }
-                        is ArtworkSeekAction.Skip -> {
-                            mediaPlayerHandler.playMediaItemInMediaSource(action.index)
-                        }
-                        ArtworkSeekAction.NoOp -> {
-                            Unit
-                        }
-                    }
-                }.onFailure { error ->
-                    Logger.w(TAG, "ArtworkPager seek failed: ${error.message}")
-                }
-            }
     }
 
     // ③ Queue mutation guard — when queue shrinks below currentPage, scroll to last index
@@ -389,10 +491,10 @@ fun NowPlayingScreenContent(
     }
     val fullscreenLyricsRequested by sharedViewModel.fullscreenLyricsRequest.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreenLyricsRequested) {
-        // Classic's and Apple Music's lyrics are a view of their own page, so they take the request themselves.
+        // Classic's and Immersive's lyrics are a view of their own page, so they take the request themselves.
         if (fullscreenLyricsRequested &&
             nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_SPOTIFY &&
-            nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC
+            nowPlayingStyle != DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE
         ) {
             showFullscreenLyrics = true
             sharedViewModel.consumeFullscreenLyricsRequest()
@@ -402,7 +504,7 @@ fun NowPlayingScreenContent(
     var showQueueBottomSheet by rememberSaveable {
         mutableStateOf(false)
     }
-    // A queue row's ⋯ in the Apple Music style, whose queue is a tab of this screen rather than a
+    // A queue row's ⋯ in the Immersive style, whose queue is a tab of this screen rather than a
     // sheet: its position and the track that was there. The other styles' queue sheet hosts its own.
     var queueMoreFor by remember { mutableStateOf<Pair<Int, Track>?>(null) }
 
@@ -702,8 +804,8 @@ fun NowPlayingScreenContent(
             onDismiss = onDismiss,
             onToolbarVisibilityChange = { shouldShowToolbar = it },
             onMoveQueueItem = { from, to -> mediaPlayerHandler.moveInQueue(from, to) },
-            onRemoveQueueItem = { index ->
-                mediaPlayerHandler.removeMediaItem(index)
+            onRemoveQueueItem = { index, videoId ->
+                mediaPlayerHandler.removeFromQueueIfStillThere(index, videoId)
             },
             onQueueItemMore = { index, track -> queueMoreFor = index to track },
             onSwitchVersion = {
@@ -808,7 +910,7 @@ fun NowPlayingScreenContent(
     }
 
     // Classic (the stored value is still SPOTIFY) is the Limusic player; the other two are SimpMusic's.
-    // Classic and M3 Expressive follow light/dark; Apple Music's white-on-cover look stays dark.
+    // Classic and M3 Expressive follow light/dark; Immersive's white-on-cover look stays dark.
     when (nowPlayingStyle) {
         DataStoreManager.NOW_PLAYING_STYLE_M3_EXPRESSIVE ->
             NowPlayingContentM3Expressive(
@@ -816,9 +918,9 @@ fun NowPlayingScreenContent(
                 actions = actions,
             )
 
-        DataStoreManager.NOW_PLAYING_STYLE_APPLE_MUSIC ->
+        DataStoreManager.NOW_PLAYING_STYLE_IMMERSIVE ->
             ForceDarkContent {
-                NowPlayingContentAppleMusic(
+                NowPlayingContentImmersive(
                     state = state,
                     actions = actions,
                 )
